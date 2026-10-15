@@ -28,9 +28,21 @@ from data.fetcher import MarketDataFetcher
 from data.earnings import EarningsFilter
 from risk.risk_manager import RiskManager, OrderProposal
 from execution.paper_broker import PaperBroker
+from execution.schwab_broker import SchwabBroker
+from notifications.notifier import DiscordNotifier
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("CloseRoutine")
+
+
+def get_broker():
+    """Instantiate broker based on settings.ENV."""
+    if settings.ENV == "live":
+        logger.info("Operating in LIVE mode: Using SchwabBroker.")
+        return SchwabBroker()
+    else:
+        logger.info("Operating in PAPER mode: Using PaperBroker.")
+        return PaperBroker()
 
 
 def run_close_routine():
@@ -40,7 +52,7 @@ def run_close_routine():
 
     fetcher = MarketDataFetcher()
     risk_mgr = RiskManager()
-    broker = PaperBroker()
+    broker = get_broker()
 
     # 1. Kill Switch Check
     if risk_mgr.is_kill_switch_active():
@@ -122,19 +134,30 @@ def run_close_routine():
         )
 
     # 4. Formulate Order Proposals
+    target_budget = (
+        settings.LIVE_PILOT_BUDGET_USD
+        if settings.ENV == "live"
+        else settings.MAX_POSITION_SIZE_USD
+    )
+
     proposals = []
     for c in top_candidates:
         proposals.append(
             OrderProposal(
                 ticker=c["ticker"],
-                target_usd=settings.MAX_POSITION_SIZE_USD,
+                target_usd=target_budget,
                 current_price=c["current_price"],
             )
         )
 
     # 5. Risk Firewall Evaluation
     cash = broker.get_cash_balance()
-    exposure = broker.get_portfolio_exposure()
+    # In live mode with Schwab, exposure is calculated from open positions
+    if hasattr(broker, "get_portfolio_exposure"):
+        exposure = broker.get_portfolio_exposure()
+    else:
+        exposure = sum(p.shares * p.entry_price for p in broker.get_positions().values())
+
     approved_orders, rejections = risk_mgr.evaluate_proposals(
         proposals=proposals,
         available_cash=cash,
@@ -148,15 +171,35 @@ def run_close_routine():
         logger.info("Zero orders approved by Risk Manager. Sitting in cash.")
         return
 
-    # 6. Execute Approved Orders on Paper Broker
-    logger.info(f"\nSubmitting {len(approved_orders)} approved orders to Paper Broker...")
+    # 6. Execute Approved Orders
+    logger.info(f"\nSubmitting {len(approved_orders)} approved orders to {settings.ENV.upper()} Broker...")
+    executed_order_reports = []
+    total_deployed = 0.0
+
     for order in approved_orders:
-        broker.buy(ticker=order.ticker, shares=order.quantity, target_price=order.estimated_price)
+        report = broker.buy(ticker=order.ticker, shares=order.quantity, target_price=order.estimated_price)
+        total_deployed += order.allocated_usd
+        executed_order_reports.append({
+            "ticker": order.ticker,
+            "shares": order.quantity,
+            "fill_price": order.estimated_price,
+            "total_value": order.allocated_usd,
+        })
+
+    # Send Discord notification
+    notifier = DiscordNotifier()
+    regime_str = f"QQQ ${bench_current:.2f} > 20 EMA ${bench_ema20:.2f} (BULL)"
+    notifier.notify_buy_orders(
+        orders=executed_order_reports,
+        regime_info=regime_str,
+        total_cost=total_deployed,
+        env=settings.ENV,
+    )
 
     # 7. Print Active Holdings
     positions = broker.get_positions()
     print("\n" + "=" * 65)
-    print("OPEN OVERNIGHT PORTFOLIO POSITION LEDGER:")
+    print(f"OPEN OVERNIGHT PORTFOLIO POSITION LEDGER [{settings.ENV.upper()}]:")
     print("-" * 65)
     for sym, pos in positions.items():
         print(f"  {sym:<6} | {pos.shares:>3} shares @ ${pos.entry_price:>7.2f} | Total: ${pos.shares * pos.entry_price:,.2f}")

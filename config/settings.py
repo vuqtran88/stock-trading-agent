@@ -31,13 +31,19 @@ class Settings(BaseSettings):
     MAX_DAILY_LOSS_USD: float = 250.0
     EARNINGS_BLACKOUT_DAYS: int = 1
 
+    # Live Pilot Sizing Guardrail
+    LIVE_PILOT_BUDGET_USD: float = 200.0
+
+    # Discord Webhook Alerts
+    DISCORD_WEBHOOK_URL: str = ""
+
     # Storage & Cache Directories
     DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data_cache"
 
     # Charles Schwab API Credentials (Phase 4)
     SCHWAB_APP_KEY: str = ""
     SCHWAB_APP_SECRET: str = ""
-    SCHWAB_CALLBACK_URL: str = "https://127.0.0.1"
+    SCHWAB_CALLBACK_URL: str = "https://127.0.0.1:8080"
     SCHWAB_ACCOUNT_HASH: str = ""
 
     @property
