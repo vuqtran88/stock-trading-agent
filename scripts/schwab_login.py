@@ -19,6 +19,29 @@ def main():
         sys.exit(1)
 
     auth = SchwabAuth()
+    
+    # 1. Check if we already have valid or refreshable tokens
+    if auth.tokens and "refresh_token" in auth.tokens:
+        try:
+            print("\nFound existing Schwab token in data_cache/schwab_token.json.")
+            print("Verifying connection and testing token refresh...")
+            token = auth.get_access_token()
+            
+            from execution.schwab_broker import SchwabBroker
+            broker = SchwabBroker(auth=auth)
+            cash = broker.get_cash_balance()
+
+            print("\n" + "=" * 70)
+            print("✅ EXISTING TOKEN IS ACTIVE & VALID!")
+            print("=" * 70)
+            print(f"Schwab Account Hash: {broker.account_hash}")
+            print(f"Settled Cash Balance: ${cash:,.2f}")
+            print("No login needed. Your bot is already authorized to trade.")
+            print("=" * 70 + "\n")
+            return
+        except Exception as e:
+            print(f"Existing token could not be refreshed ({e}). Proceeding to re-authenticate...\n")
+
     try:
         import webbrowser
         import urllib.parse
