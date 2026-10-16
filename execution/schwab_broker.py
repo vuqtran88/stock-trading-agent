@@ -31,13 +31,15 @@ class SchwabBroker(BaseBroker):
         if not self.account_hash:
             self._auto_detect_account_hash()
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self, is_json: bool = False) -> Dict[str, str]:
         token = self.auth.get_access_token()
-        return {
+        headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
+        if is_json:
+            headers["Content-Type"] = "application/json"
+        return headers
 
     def _auto_detect_account_hash(self):
         """Fetch account numbers and select the first available account hash."""
@@ -46,15 +48,32 @@ class SchwabBroker(BaseBroker):
             resp = requests.get(url, headers=self._get_headers(), timeout=10)
             if resp.status_code == 200:
                 accounts = resp.json()
-                if accounts:
+                if accounts and "hashValue" in accounts[0]:
                     self.account_hash = accounts[0]["hashValue"]
                     logger.info(f"Auto-selected Schwab account hash: {self.account_hash}")
-                else:
-                    logger.warning("No linked Schwab accounts found.")
+                    return
             else:
                 logger.warning(f"Failed to fetch account numbers: {resp.text}")
         except Exception as e:
-            logger.warning(f"Could not auto-detect account hash: {e}")
+            logger.warning(f"Could not auto-detect account hash via accountNumbers: {e}")
+
+        # Fallback to /accounts
+        try:
+            resp = requests.get(f"{SCHWAB_API_BASE}/accounts", headers=self._get_headers(), timeout=10)
+            if resp.status_code == 200:
+                accounts = resp.json()
+                if accounts:
+                    acc_num = accounts[0].get("securitiesAccount", {}).get("accountNumber")
+                    # Try accountNumbers once more
+                    num_resp = requests.get(url, headers=self._get_headers(), timeout=10)
+                    if num_resp.status_code == 200:
+                        for entry in num_resp.json():
+                            if entry.get("accountNumber") == acc_num:
+                                self.account_hash = entry.get("hashValue")
+                                logger.info(f"Auto-selected Schwab account hash: {self.account_hash}")
+                                return
+        except Exception as e:
+            logger.warning(f"Fallback account detection failed: {e}")
 
     def get_cash_balance(self) -> float:
         """Fetch settled cash from Schwab account."""
@@ -133,7 +152,7 @@ class SchwabBroker(BaseBroker):
             ],
         }
 
-        resp = requests.post(url, headers=self._get_headers(), json=order_payload, timeout=15)
+        resp = requests.post(url, headers=self._get_headers(is_json=True), json=order_payload, timeout=15)
         now_str = datetime.now().isoformat()
 
         if resp.status_code not in (200, 201):

@@ -20,10 +20,37 @@ def main():
 
     auth = SchwabAuth()
     try:
-        auth.login_interactive(port=8080)
-        print("Verification: Access Token retrieved successfully:")
-        token = auth.get_access_token()
-        print(f"Token Prefix: {token[:10]}... (Valid)")
+        import webbrowser
+        import urllib.parse
+
+        auth_url = (
+            f"https://api.schwabapi.com/v1/oauth/authorize?client_id={auth.app_key}"
+            f"&redirect_uri={urllib.parse.quote(auth.callback_url)}"
+        )
+        print("\n" + "=" * 70)
+        print("CHARLES SCHWAB OAUTH2 AUTHORIZATION")
+        print("=" * 70)
+        print("1. Opening your browser to log into Charles Schwab...")
+        print(f"URL: {auth_url}\n")
+        webbrowser.open(auth_url)
+
+        print("2. Log into Schwab and approve access.")
+        print("3. Your browser will redirect to https://127.0.0.1/?code=... (it may say 'site can't be reached' — this is normal!)")
+        print("4. COPY the entire URL from your browser's address bar and paste it below:\n")
+        
+        redirected_url = input("Paste redirected URL here: ").strip()
+        auth.exchange_code_for_tokens(redirected_url)
+        
+        print("\n" + "=" * 70)
+        print("✅ SUCCESS! Schwab Tokens stored in data_cache/schwab_token.json")
+        print("=" * 70)
+
+        # Print account hash
+        from execution.schwab_broker import SchwabBroker
+        broker = SchwabBroker(auth=auth)
+        print(f"\nYour Schwab Account Hash: {broker.account_hash}")
+        print(f"Settled Cash Balance: ${broker.get_cash_balance():,.2f}\n")
+
     except Exception as e:
         print(f"\nAuthentication Failed: {e}\n")
         sys.exit(1)

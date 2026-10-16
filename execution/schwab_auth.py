@@ -99,6 +99,34 @@ class SchwabAuth:
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
+    def exchange_code_for_tokens(self, auth_code_or_url: str) -> Dict:
+        """Exchange an authorization code or full redirect URL for tokens."""
+        code = auth_code_or_url.strip()
+        if "code=" in code:
+            parsed = urllib.parse.urlparse(code)
+            params = urllib.parse.parse_qs(parsed.query)
+            if "code" in params:
+                code = params["code"][0]
+
+        # Decode URL encoding if needed (e.g. %40 -> @)
+        code = urllib.parse.unquote(code)
+
+        headers = self._get_basic_auth_header()
+        payload = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self.callback_url,
+        }
+
+        resp = requests.post(SCHWAB_TOKEN_URL, headers=headers, data=payload, timeout=15)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to exchange authorization code: {resp.text}")
+
+        token_data = resp.json()
+        self._save_tokens(token_data)
+        logger.info("Authentication complete! Schwab tokens stored successfully.")
+        return token_data
+
     def login_interactive(self, port: int = 8080) -> Dict:
         """Run local browser authentication to fetch initial refresh and access token."""
         if not self.app_key or not self.app_secret:
@@ -116,34 +144,30 @@ class SchwabAuth:
         print(f"URL: {auth_url}\n")
         webbrowser.open(auth_url)
 
-        # Start temporary local HTTP server to catch redirect callback
-        _OAuthCallbackHandler.auth_code = None
-        server = HTTPServer(("127.0.0.1", port), _OAuthCallbackHandler)
-        print(f"Waiting for authorization callback at {self.callback_url}...")
+        # Parse port from callback_url if provided, else default
+        parsed_cb = urllib.parse.urlparse(self.callback_url)
+        listen_port = parsed_cb.port or 80
 
-        while _OAuthCallbackHandler.auth_code is None:
-            server.handle_request()
+        print(f"Attempting to catch redirect at {self.callback_url}...")
+        try:
+            _OAuthCallbackHandler.auth_code = None
+            server = HTTPServer(("127.0.0.1", listen_port), _OAuthCallbackHandler)
+            server.timeout = 10
+            # Wait up to 60 seconds
+            start_t = time.time()
+            while _OAuthCallbackHandler.auth_code is None and (time.time() - start_t) < 60:
+                server.handle_request()
+            server.server_close()
+            if _OAuthCallbackHandler.auth_code:
+                return self.exchange_code_for_tokens(_OAuthCallbackHandler.auth_code)
+        except Exception as e:
+            logger.debug(f"Local server listener failed or timed out: {e}")
 
-        auth_code = _OAuthCallbackHandler.auth_code
-        server.server_close()
-        print("Received authorization code! Exchanging for tokens...")
-
-        # Exchange authorization code for tokens
-        headers = self._get_basic_auth_header()
-        payload = {
-            "grant_type": "authorization_code",
-            "code": auth_code,
-            "redirect_uri": self.callback_url,
-        }
-
-        resp = requests.post(SCHWAB_TOKEN_URL, headers=headers, data=payload, timeout=15)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Failed to exchange authorization code: {resp.text}")
-
-        token_data = resp.json()
-        self._save_tokens(token_data)
-        print("Authentication complete! Tokens stored successfully.\n")
-        return token_data
+        # Fallback to manual paste prompt
+        print("\nIf your browser redirected to 'This site can't be reached' or 127.0.0.1:")
+        print("Please COPY the entire redirected URL from your browser address bar and paste it below.")
+        user_input = input("Paste redirected URL or code: ").strip()
+        return self.exchange_code_for_tokens(user_input)
 
     def refresh_access_token(self) -> str:
         """Refresh access token using refresh_token."""
