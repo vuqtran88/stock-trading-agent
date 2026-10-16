@@ -1,7 +1,7 @@
 # Project State Context: Stock Trading Agent
 
 ## Quick Snapshot
-- **Strategy**: US Equities Buy-at-Close (3:50 PM ET), Sell-at-Open (9:30 AM ET) overnight drift.
+- **Strategy**: US Equities Buy-at-Close (3:50 PM ET on Day T), Sell-at-Open (9:30 AM ET on Day T+1) overnight drift.
 - **Universe**: `QQQ` (benchmark), `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`.
 - **Status**: Phases 1–4 are fully built, tested (12/12 passing unit tests), and live credentials verified with Charles Schwab.
 

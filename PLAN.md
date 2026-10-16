@@ -13,9 +13,9 @@ This document defines the consolidated requirements, system architecture, and st
 | **Asset Universe** | **Tech Large Caps + Benchmark** (`QQQ`, `AAPL`, `MSFT`, `NVDA`, `AMZN`, `GOOGL`, `META`, `TSLA`) | Liquid, low bid-ask spread, high overnight momentum drift. |
 | **Trading Strategy** | **Buy-at-Close, Sell-at-Open (Overnight Drift)** | Buys before 4:00 PM ET, sells at 9:30 AM ET open. No PDT restrictions. |
 | **Strategy Filters** | 1. **Market Regime Filter** (QQQ > 20 EMA)<br/>2. **Earnings Blackout Filter** (mandatory)<br/>3. **Momentum/Pullback Scoring** | Avoids buying into broad market downturns and eliminates catastrophic post-market earnings gap downs. |
-| **Backtesting Engine** | Historical simulation on Daily OHLCV data ($2018–\text{Present}$) | Evaluates Sharpe ratio, Max Drawdown, Win Rate, and overnight vs. buy-and-hold returns. |
+| **Backtesting Engine** | Historical simulation on Daily OHLCV data (2018–Present) | Evaluates Sharpe ratio, Max Drawdown, Win Rate, and overnight vs. buy-and-hold returns. |
 | **Safety & Risk Controls** | Hard-coded deterministic engine: max position limits, portfolio allocation caps, manual kill switch | Decouples AI reasoning from direct order submission to prevent catastrophic hallucination. |
-| **Execution Progression** | **Backtest $\to$ Local Paper Simulator $\to$ Schwab Live (1-share) $\to$ Full Sizing** | Ensures complete control and operational verification at every milestone. |
+| **Execution Progression** | **Backtest -> Local Paper Simulator -> Schwab Live (1-share) -> Full Sizing** | Ensures complete control and operational verification at every milestone. |
 
 ---
 
@@ -95,9 +95,9 @@ flowchart LR
 
 - **Deliverables**:
   1. `strategies/overnight_strategy.py`: Logic implementing:
-     - Entry: Market close on Day $T$.
-     - Exit: Market open on Day $T+1$.
-     - Return formula: $R_t = \frac{\text{Open}_{t+1} - \text{Close}_t}{\text{Close}_t} - \text{Slippage/Fees}$.
+     - Entry: Market close on Day T.
+     - Exit: Market open on Day T+1.
+     - Return formula: `Return = (Open(T+1) - Close(T)) / Close(T) - Fees`.
      - Filters: Regime check (e.g., QQQ > 20/50 EMA) and Earnings blackout.
   2. `backtesting/engine.py`: Vectorized/Event-driven overnight simulator tracking equity curves.
   3. `backtesting/metrics.py`: Calculation of Sharpe Ratio, Sortino Ratio, Maximum Drawdown (Max DD), Win Rate, and Comparison vs. Buy-and-Hold.
