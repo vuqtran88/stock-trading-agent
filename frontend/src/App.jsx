@@ -25,9 +25,24 @@ export default function App() {
   const [portfolioLoading, setPortfolioLoading] = useState(true);
   const [config, setConfig] = useState(null);
 
-  // Routine execution logs
-  const [routineLogs, setRoutineLogs] = useState([]);
+  // Routine execution logs (persisted in localStorage)
+  const [routineLogs, setRoutineLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('action_output_logs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [runningRoutine, setRunningRoutine] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('action_output_logs', JSON.stringify(routineLogs));
+    } catch (e) {
+      console.error('Failed to save logs to localStorage', e);
+    }
+  }, [routineLogs]);
 
   // Check Auth Status on mount
   const checkAuth = async () => {
@@ -160,20 +175,20 @@ export default function App() {
     const label = routineType === 'buy' ? '3:50 PM Buy Entry' : '9:28 AM Morning Exit';
 
 
-    addLog(`Initiated ${label}...`);
+    addLog(`Initiating ${label}...`, 'info');
 
     try {
       const res = await fetch(endpoint, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        addLog(`Completed ${label}: ${data.message || data.summary || 'Finished'}`);
+        addLog(`Completed ${label}: ${data.message || data.summary || 'Finished'}`, 'success');
         fetchPortfolio();
       } else {
-        addLog(`Error in ${label}: ${data.detail || 'Execution failed'}`);
+        addLog(`Error in ${label}: ${data.detail || 'Execution failed'}`, 'error');
       }
 
     } catch (err) {
-      addLog(`Network failure running ${label}`);
+      addLog(`Network failure running ${label}`, 'error');
     } finally {
       setRunningRoutine(null);
     }
@@ -185,7 +200,7 @@ export default function App() {
     try {
       const res = await fetch('/api/trading/emergency-stop', { method: 'POST' });
       const data = await res.json();
-      addLog(`KILL SWITCH ENGAGED: ${data.message || 'All positions flattened'}`);
+      addLog(`KILL SWITCH ENGAGED: ${data.message || 'All positions flattened'}`, 'error');
       fetchPortfolio();
     } catch (err) {
       alert('Error triggering emergency stop');
@@ -197,16 +212,26 @@ export default function App() {
     try {
       const res = await fetch('/api/trading/reset-emergency', { method: 'POST' });
       const data = await res.json();
-      addLog(`Emergency state reset: ${data.status}`);
+      addLog(`Emergency state reset: ${data.status}`, 'info');
       fetchPortfolio();
     } catch (err) {
       alert('Error resetting emergency state');
     }
   };
 
-  const addLog = (msg) => {
+  const addLog = (msg, type = 'info') => {
     const time = new Date().toLocaleTimeString();
-    setRoutineLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 49)]);
+    setRoutineLogs((prev) => [
+      { id: Date.now() + Math.random(), time, text: msg, type },
+      ...prev.slice(0, 499), // Store up to 500 historical activities
+    ]);
+  };
+
+  const handleClearLogs = () => {
+    setRoutineLogs([]);
+    try {
+      localStorage.removeItem('action_output_logs');
+    } catch {}
   };
 
   if (authChecking) {
@@ -335,6 +360,7 @@ export default function App() {
                 onTrigger={handleTriggerRoutine}
                 runningRoutine={runningRoutine}
                 logs={routineLogs}
+                onClearLogs={handleClearLogs}
                 isLive={isLive}
                 env={currentEnv}
               />

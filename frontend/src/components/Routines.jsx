@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Sunrise, Sunset, Loader2, CheckCircle2, AlertCircle, Clock, ShieldCheck, PauseCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Play, Sunrise, Sunset, Loader2, CheckCircle2, AlertCircle, Clock, ShieldCheck, PauseCircle, Trash2, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 export default function Routines({
   onRunClose,
@@ -7,13 +7,31 @@ export default function Routines({
   onTrigger,
   loadingRoutine,
   runningRoutine,
-  logs: externalLogs,
+  logs: externalLogs = [],
+  onClearLogs,
   isLive = false,
   env = 'paper',
 }) {
-  const [internalLogs, setInternalLogs] = useState([]);
+  const [internalLogs, setInternalLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('internal_action_logs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [daemonStatus, setDaemonStatus] = useState(null);
   const [config, setConfig] = useState(null);
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState('newest_first'); // 'newest_first' | 'newest_last'
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('internal_action_logs', JSON.stringify(internalLogs));
+    } catch {}
+  }, [internalLogs]);
   const activeLoading = loadingRoutine || runningRoutine;
 
   const fetchStatusAndConfig = async () => {
@@ -135,10 +153,65 @@ export default function Routines({
 
   const addLog = (text, type = 'info') => {
     setInternalLogs((prev) => [
-      { time: new Date().toLocaleTimeString(), text, type },
-      ...prev.slice(0, 9),
+      { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString(), text, type },
+      ...prev.slice(0, 499),
     ]);
   };
+
+  const handleClearAllLogs = () => {
+    if (confirm('Clear all action output logs?')) {
+      setInternalLogs([]);
+      try {
+        localStorage.removeItem('internal_action_logs');
+      } catch {}
+      if (onClearLogs) onClearLogs();
+    }
+  };
+
+  // Combine and normalize external and internal logs
+  const allLogs = useMemo(() => {
+    const normalizedExt = (externalLogs || []).map((l, idx) => {
+      if (typeof l === 'string') {
+        const timeMatch = l.match(/^\[(.*?)\]\s*(.*)$/);
+        return {
+          id: `ext-${idx}`,
+          time: timeMatch ? timeMatch[1] : '',
+          text: timeMatch ? timeMatch[2] : l,
+          type: l.toLowerCase().includes('error') || l.toLowerCase().includes('fail')
+            ? 'error'
+            : l.toLowerCase().includes('completed') || l.toLowerCase().includes('success')
+            ? 'success'
+            : 'info',
+        };
+      }
+      return l;
+    });
+
+    // Merge internal logs and external logs
+    const combined = [...internalLogs, ...normalizedExt];
+    // Remove exact duplicate text+time if any
+    const seen = new Set();
+    const unique = [];
+    for (const item of combined) {
+      const key = `${item.time}-${item.text}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(item);
+      }
+    }
+
+    if (sortOrder === 'newest_last') {
+      return [...unique].reverse();
+    }
+    return unique;
+  }, [internalLogs, externalLogs, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(allLogs.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedLogs = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize;
+    return allLogs.slice(start, start + pageSize);
+  }, [allLogs, safeCurrentPage, pageSize]);
 
   const isPaused = config?.strategy_enabled === false;
   const openTimeDisplay = config?.open_routine_time || '09:28';
@@ -292,28 +365,128 @@ export default function Routines({
         </div>
       </div>
 
-      {/* Routine Log Feed */}
-      {(externalLogs?.length > 0 || internalLogs?.length > 0) && (
-        <div className="pt-2">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Action Output</div>
-          <div className="space-y-1 bg-slate-950/80 p-3 rounded-lg border border-slate-800/80 max-h-36 overflow-y-auto font-mono text-[11px]">
-            {externalLogs?.map((logStr, idx) => (
-              <div key={`ext-${idx}`} className="text-slate-300">
-                {logStr}
-              </div>
-            ))}
-            {internalLogs?.map((l, idx) => (
-              <div key={`int-${idx}`} className="flex items-start space-x-2">
-                <span className="text-slate-500">{l.time}</span>
+      {/* Routine Log Feed / Action Output */}
+      {allLogs.length > 0 && (
+        <div className="pt-2 border-t border-slate-800/60 mt-1">
+          {/* Action Output Header & Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                Action Output
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                {allLogs.length} {allLogs.length === 1 ? 'event' : 'events'}
+              </span>
+            </div>
+
+            {/* Toolbar: Sort toggle, Page size, Pagination, Clear */}
+            <div className="flex items-center gap-2 text-[11px]">
+              {/* Sort Order Toggle */}
+              <button
+                onClick={() => setSortOrder((prev) => (prev === 'newest_first' ? 'newest_last' : 'newest_first'))}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[10px] font-medium transition cursor-pointer"
+                title="Toggle Sort Order"
+              >
+                <ArrowUpDown className="w-3 h-3 text-indigo-400" />
+                <span>{sortOrder === 'newest_first' ? 'Newest First' : 'Oldest First'}</span>
+              </button>
+
+              {/* Page size dropdown */}
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-0.5 text-slate-300 text-[10px] font-mono focus:outline-none cursor-pointer"
+              >
+                <option value={5}>5 / page</option>
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+
+              {/* Clear logs button */}
+              <button
+                onClick={handleClearAllLogs}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-[10px] font-medium transition border border-rose-500/20 cursor-pointer"
+                title="Clear all activity history"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Log Window */}
+          <div className="space-y-1.5 bg-slate-950/90 p-3 rounded-lg border border-slate-800/80 min-h-24 max-h-56 overflow-y-auto font-mono text-[11px]">
+            {pagedLogs.map((l) => (
+              <div key={l.id} className="flex items-start space-x-2 py-0.5 border-b border-slate-900/50 last:border-0">
+                {l.time && <span className="text-slate-500 shrink-0 font-mono text-[10px] pt-0.5">[{l.time}]</span>}
                 {l.type === 'success' ? (
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                ) : (
+                ) : l.type === 'error' ? (
                   <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                ) : (
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1.5 mr-1 ml-0.5" />
                 )}
-                <span className={l.type === 'success' ? 'text-slate-300' : 'text-rose-300'}>{l.text}</span>
+                <span className={`break-all ${
+                  l.type === 'success'
+                    ? 'text-emerald-200'
+                    : l.type === 'error'
+                    ? 'text-rose-300'
+                    : 'text-slate-300'
+                }`}>
+                  {l.text}
+                </span>
               </div>
             ))}
           </div>
+
+          {/* Pagination Navigation Footer */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 px-1">
+              <span>
+                Page <strong className="text-slate-200 font-mono">{safeCurrentPage}</strong> of{' '}
+                <strong className="text-slate-200 font-mono">{totalPages}</strong>
+              </span>
+
+              <div className="flex items-center space-x-1">
+                <button
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="p-1 rounded bg-slate-800/60 hover:bg-slate-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1 rounded bg-slate-800/60 hover:bg-slate-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1 rounded bg-slate-800/60 hover:bg-slate-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="p-1 rounded bg-slate-800/60 hover:bg-slate-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

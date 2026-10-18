@@ -39,8 +39,10 @@ class Settings(BaseSettings):
     # Live Pilot Sizing Guardrail
     LIVE_PILOT_BUDGET_USD: float = 200.0
 
-    # Discord Webhook Alerts
+    # Discord Webhook Alerts (separate channels for live & paper)
     DISCORD_WEBHOOK_URL: str = ""
+    DISCORD_PAPER_WEBHOOK_URL: str = ""
+    DISCORD_LIVE_WEBHOOK_URL: str = ""
 
     # Storage & Cache Directories
     DATA_DIR: Path = Path(__file__).resolve().parent.parent / "data_cache"

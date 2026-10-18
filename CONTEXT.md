@@ -69,4 +69,21 @@ pytest
   - `frontend/src/components/Routines.jsx`: Interactive "🌱 Seed Holdings" and "⚡ Fast-Forward 24H" buttons.
   - `Dockerfile` & `.dockerignore`: Multi-stage Google Cloud Run container packaging with automated pytest assertion gate.
 
+## Google Cloud Production Deployment
+- **Project ID**: `stock-trading-agent-249477`
+- **Region**: `us-central1`
+- **Cloud Run Service**: `stock-trading-agent`
+  - **Live URL**: `https://stock-trading-agent-1015953760510.us-central1.run.app`
+  - **Swagger API Docs**: `https://stock-trading-agent-1015953760510.us-central1.run.app/docs`
+  - **Default Environment**: `ENV=paper`
+  - **Authentication & Secrets**: Stored securely in **GCP Secret Manager** with automatic injection:
+    - `dashboard-password`: Web Dashboard login password
+    - `discord-paper-webhook`: Discord webhook for paper trades
+    - `discord-live-webhook`: Discord webhook for live trades
+    - `schwab-app-key`, `schwab-app-secret`, `schwab-account-hash`: Charles Schwab API credentials
+  - **Discord Routing**: Automatically sends notifications to the Paper channel when running in `ENV=paper`, and to the Live channel when running in `ENV=live`.
+- **Cloud Scheduler Jobs**:
+  - `morning-open-routine`: `28 9 * * 1-5` (9:28 AM ET on weekdays) -> `POST /api/trading/run-open-routine`
+  - `afternoon-close-routine`: `50 15 * * 1-5` (3:50 PM ET on weekdays) -> `POST /api/trading/run-close-routine`
+
 

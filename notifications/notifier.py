@@ -12,16 +12,33 @@ logger = logging.getLogger(__name__)
 class DiscordNotifier:
     """Sends rich embed notifications to a configured Discord webhook."""
 
-    def __init__(self, webhook_url: Optional[str] = None):
-        self.webhook_url = webhook_url or settings.DISCORD_WEBHOOK_URL
+    def __init__(self, webhook_url: Optional[str] = None, env: Optional[str] = None):
+        target_env = (env or settings.ENV).lower()
+        if webhook_url:
+            self.webhook_url = webhook_url
+        elif target_env == "live" and settings.DISCORD_LIVE_WEBHOOK_URL:
+            self.webhook_url = settings.DISCORD_LIVE_WEBHOOK_URL
+        elif target_env == "paper" and settings.DISCORD_PAPER_WEBHOOK_URL:
+            self.webhook_url = settings.DISCORD_PAPER_WEBHOOK_URL
+        else:
+            self.webhook_url = settings.DISCORD_WEBHOOK_URL or settings.DISCORD_PAPER_WEBHOOK_URL or settings.DISCORD_LIVE_WEBHOOK_URL
 
     def is_configured(self) -> bool:
         """Check if a webhook URL is provided."""
         return bool(self.webhook_url and self.webhook_url.startswith("https://discord.com/api/webhooks/"))
 
-    def send_message(self, content: str, embed: Optional[Dict] = None) -> bool:
+    def _get_webhook_for_env(self, env: Optional[str] = None) -> str:
+        target_env = (env or settings.ENV).lower()
+        if target_env == "live" and settings.DISCORD_LIVE_WEBHOOK_URL:
+            return settings.DISCORD_LIVE_WEBHOOK_URL
+        elif target_env == "paper" and settings.DISCORD_PAPER_WEBHOOK_URL:
+            return settings.DISCORD_PAPER_WEBHOOK_URL
+        return self.webhook_url or settings.DISCORD_WEBHOOK_URL
+
+    def send_message(self, content: str, embed: Optional[Dict] = None, webhook_url: Optional[str] = None) -> bool:
         """Send message or embed to Discord."""
-        if not self.is_configured():
+        target_url = webhook_url or self.webhook_url
+        if not target_url or not target_url.startswith("https://discord.com/api/webhooks/"):
             logger.debug("Discord webhook not configured; skipping notification.")
             return False
 
@@ -30,7 +47,7 @@ class DiscordNotifier:
             payload["embeds"] = [embed]
 
         try:
-            resp = requests.post(self.webhook_url, json=payload, timeout=10)
+            resp = requests.post(target_url, json=payload, timeout=10)
             if resp.status_code in (200, 204):
                 logger.debug("Discord notification sent successfully.")
                 return True
@@ -58,7 +75,8 @@ class DiscordNotifier:
             "fields": fields,
             "footer": {"text": "Stock Trading Agent • Buy-at-Close"},
         }
-        self.send_message(content="", embed=embed)
+        url = self._get_webhook_for_env(env)
+        self.send_message(content="", embed=embed, webhook_url=url)
 
     def notify_sell_orders(self, reports: List[Dict], total_pnl: float, cash_balance: float, env: str = "live"):
         """Notify Discord when overnight positions are sold at open."""
@@ -80,7 +98,8 @@ class DiscordNotifier:
             "fields": fields,
             "footer": {"text": "Stock Trading Agent • Sell-at-Open (100% Cash)"},
         }
-        self.send_message(content="", embed=embed)
+        url = self._get_webhook_for_env(env)
+        self.send_message(content="", embed=embed, webhook_url=url)
 
     def notify_emergency_stop(self, reason: str, flattened_count: int, cash_balance: float):
         """Notify Discord when the emergency kill switch is tripped."""
