@@ -58,3 +58,15 @@ python3 scripts/emergency_kill_switch.py reset
 # Run test suite
 pytest
 ```
+
+## Resolved Milestones & Fast-Forward Validation Suite
+- **24-Hour Routine Validation Delay (Resolved)**:
+  - `execution/dossier.py`: Generates machine-readable and console-formatted Structured Decision Dossiers for every routine run.
+  - `tests/test_deterministic_cycle.py`: Automated pytest proving pre-seeded liquidations, afternoon buy ranking & sizing, and morning settlements mathematically in < 2 seconds.
+  - `scripts/test_deterministic_cycle.py`: CLI simulator (`--seed-only` and full fast-forward modes).
+  - `scripts/trading_daemon.py`: Autonomous scheduler daemon with live heartbeat status, market hour awareness, and `--test-interval` accelerated sandbox.
+  - `backend/routes/trading.py`: Fast-forward endpoints (`/api/trading/seed-test-positions`, `/api/trading/run-fast-forward-cycle`, `/api/trading/latest-dossiers`).
+  - `frontend/src/components/Routines.jsx`: Interactive "🌱 Seed Holdings" and "⚡ Fast-Forward 24H" buttons.
+  - `Dockerfile` & `.dockerignore`: Multi-stage Google Cloud Run container packaging with automated pytest assertion gate.
+
+

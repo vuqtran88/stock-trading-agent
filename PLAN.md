@@ -141,11 +141,41 @@ flowchart LR
 
 ---
 
+### Phase 5: Web Management System & Backtest Studio (Completed)
+**Objective**: Interactive web terminal to manage paper trading, configure universe parameters, simulate historical performance, and trigger automated routines.
+
+- **Deliverables**:
+  1. `backend/`:
+     - FastAPI REST API with JWT authentication (`/api/auth/login`, `/api/auth/status`, `/api/auth/logout`).
+     - Portfolio and paper trading endpoints (`/api/trading/portfolio`, `/api/trading/order`, `/api/trading/positions/{sym}`).
+     - Automated routine triggers (`/api/trading/run-350-routine`, `/api/trading/run-928-routine`).
+     - Strategy universe and risk configuration (`/api/config`).
+     - On-demand backtest simulator (`/api/backtest`).
+  2. `frontend/`:
+     - Vite + React + TailwindCSS dark-mode glassmorphic interface.
+     - Live & Paper Dashboard (`Portfolio.jsx`, `OrderForm.jsx`, `Routines.jsx`).
+     - Backtest Studio (`BacktestStudio.jsx`) with parameter forms, KPI cards, and Recharts equity curves vs. QQQ benchmark.
+     - Target Universe & Risk Controls (`Universe.jsx`) with ticker chip selector and risk sliders.
+     - Execution History (`History.jsx`) and password login modal (`LoginModal.jsx`).
+- **Verification Gate**:
+  - Automated tests passing in `tests/test_backend_api.py`.
+  - Frontend production build verified (`npm run build`).
+
+---
+
 ## 4. Codebase Structure
 
 ```text
 stock-trading-agent/
 ├── PLAN.md                      # This master plan
+├── CONTEXT.md                   # Agent system context & credentials guide
+├── backend/                     # FastAPI management backend
+│   ├── app.py                   # API router & static asset mounting
+│   ├── models.py                # Pydantic schemas
+│   └── routes/                  # Modular auth, config, trading, and backtest endpoints
+├── frontend/                    # React + Vite + TailwindCSS dashboard
+│   ├── src/components/          # Navbar, Portfolio, Routines, BacktestStudio, Universe, etc.
+│   └── vite.config.js           # API proxy & asset bundling
 ├── config/
 │   ├── __init__.py
 │   └── settings.py              # Configuration & trading parameters
@@ -179,3 +209,4 @@ stock-trading-agent/
 ├── requirements.txt
 └── README.md
 ```
+

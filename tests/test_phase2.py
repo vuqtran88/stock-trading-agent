@@ -64,3 +64,67 @@ def test_backtest_engine_execution():
     res = engine.run(strategy=strategy, market_data=market_data, benchmark_data=bench_df)
     assert len(res["equity_curve"]) == 5
     assert res["equity_curve"].iloc[0] == 10000.0
+
+
+def test_generate_signals_ranking_and_negative_momentum():
+    """Verify generate_signals ranks dip leaders higher and disqualifies negative momentum."""
+    dates = pd.date_range("2024-01-01", periods=25)
+    bench_df = pd.DataFrame({"Close": np.linspace(100, 130, 25), "Open": np.linspace(100, 130, 25)}, index=dates)
+
+    # AAPL: +20% 20d momentum, but dipped intraday today (-2%) -> ideal candidate
+    aapl_close = np.linspace(100, 120, 25)
+    aapl_open = aapl_close.copy()
+    aapl_open[-1] = aapl_close[-1] * 1.02  # open higher than close -> intraday drop of ~2%
+    aapl_df = pd.DataFrame({"Close": aapl_close, "Open": aapl_open}, index=dates)
+
+    # MSFT: +20% 20d momentum, but gained intraday today (+5%) -> lower score than AAPL
+    msft_close = np.linspace(100, 120, 25)
+    msft_open = msft_close.copy()
+    msft_open[-1] = msft_close[-1] * 0.95  # open lower than close -> intraday gain of ~5%
+    msft_df = pd.DataFrame({"Close": msft_close, "Open": msft_open}, index=dates)
+
+    # INTC: -10% negative momentum -> should be disqualified completely
+    intc_close = np.linspace(100, 90, 25)
+    intc_open = intc_close.copy()
+    intc_df = pd.DataFrame({"Close": intc_close, "Open": intc_open}, index=dates)
+
+    market_data = {"AAPL": aapl_df, "MSFT": msft_df, "INTC": intc_df}
+
+    # Test top_n=1: AAPL should be chosen over MSFT because AAPL dipped today
+    strategy_top1 = OvernightDriftStrategy(momentum_period=20, top_n=1, use_regime_filter=False, use_earnings_filter=False)
+    weights_top1 = strategy_top1.generate_signals(market_data=market_data, benchmark_data=bench_df)
+
+    last_dt = dates[-1]
+    assert weights_top1.loc[last_dt, "AAPL"] == 1.0
+    assert weights_top1.loc[last_dt, "MSFT"] == 0.0
+    assert weights_top1.loc[last_dt, "INTC"] == 0.0  # INTC never selected due to negative momentum
+
+    # Test top_n=2: AAPL and MSFT should split weights 50/50, INTC still 0
+    strategy_top2 = OvernightDriftStrategy(momentum_period=20, top_n=2, use_regime_filter=False, use_earnings_filter=False)
+    weights_top2 = strategy_top2.generate_signals(market_data=market_data, benchmark_data=bench_df)
+
+    assert pytest.approx(weights_top2.loc[last_dt, "AAPL"], rel=1e-3) == 0.5
+    assert pytest.approx(weights_top2.loc[last_dt, "MSFT"], rel=1e-3) == 0.5
+    assert weights_top2.loc[last_dt, "INTC"] == 0.0
+
+
+def test_generate_signals_earnings_blackout():
+    """Verify generate_signals skips stocks with earnings tonight or tomorrow morning."""
+    from datetime import date
+    dates = pd.date_range("2024-01-01", periods=25)
+    bench_df = pd.DataFrame({"Close": np.linspace(100, 130, 25), "Open": np.linspace(100, 130, 25)}, index=dates)
+
+    stock_close = np.linspace(100, 120, 25)
+    stock_df = pd.DataFrame({"Close": stock_close, "Open": stock_close}, index=dates)
+    market_data = {"NVDA": stock_df}
+
+    # NVDA reports earnings on the last trading date
+    earnings_dates = {"NVDA": [dates[-1].date()]}
+
+    strategy = OvernightDriftStrategy(momentum_period=20, top_n=1, use_regime_filter=False, use_earnings_filter=True)
+    weights = strategy.generate_signals(market_data=market_data, benchmark_data=bench_df, earnings_dates=earnings_dates)
+
+    # NVDA must be blacklisted (weight 0.0) on the earnings date
+    last_dt = dates[-1]
+    assert weights.loc[last_dt, "NVDA"] == 0.0
+

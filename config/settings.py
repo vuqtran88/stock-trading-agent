@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Runtime Environment
     ENV: Literal["backtest", "paper", "live"] = "paper"
 
+    # Dashboard Web Security
+    DASHBOARD_PASSWORD: str = "admin123"
+    JWT_SECRET_KEY: str = "stock-trading-agent-secure-secret-key-2026"
+    JWT_ALGORITHM: str = "HS256"
+
     # Universe
     TICKERS: str = "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA"
     BENCHMARK_TICKER: str = "QQQ"
