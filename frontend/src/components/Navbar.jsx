@@ -71,7 +71,9 @@ export default function Navbar({
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-400 font-medium">QQQ Regime:</span>
             <span className="font-semibold text-white">${portfolio?.qqq_price?.toFixed(2) || '---'}</span>
-            <span className="text-slate-500 text-[11px]">/ 20EMA ${portfolio?.qqq_ema20?.toFixed(2) || '---'}</span>
+            <span className="text-slate-500 text-[11px]">
+              / {config?.regime_ema_period || portfolio?.regime_ema_period || 20}EMA ${portfolio?.qqq_ema20?.toFixed(2) || '---'}
+            </span>
             <div className={`flex items-center space-x-1 font-bold text-[11px] px-2 py-0.5 rounded ${
               isBull ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
             }`}>

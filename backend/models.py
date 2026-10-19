@@ -54,6 +54,7 @@ class PortfolioResponse(BaseModel):
     regime_status: str  # "BULL" or "BEAR"
     qqq_price: float
     qqq_ema20: float
+    regime_ema_period: int = 20
 
 
 class BacktestRequest(BaseModel):

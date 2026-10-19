@@ -29,12 +29,25 @@ export default function BacktestStudio() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [topN, setTopN] = useState(3);
   const [regimeFilter, setRegimeFilter] = useState(true);
+  const [regimeEma, setRegimeEma] = useState(20);
   const [initialCapital, setInitialCapital] = useState(10000);
   const [positionSize, setPositionSize] = useState(1000);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
+
+  // Load configured regime_ema_period on mount
+  React.useEffect(() => {
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (cfg?.regime_ema_period) {
+          setRegimeEma(cfg.regime_ema_period);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleRunBacktest = async (e) => {
     e.preventDefault();
@@ -49,6 +62,7 @@ export default function BacktestStudio() {
           start_date: startDate,
           end_date: endDate || null,
           top_n: Number(topN),
+          regime_ema_period: Number(regimeEma),
           use_regime_filter: Boolean(regimeFilter),
           initial_capital: Number(initialCapital),
         }),
@@ -161,7 +175,7 @@ export default function BacktestStudio() {
             className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-teal-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
           />
           <label htmlFor="regime" className="text-xs text-slate-300 font-medium cursor-pointer">
-            Filter by 20 EMA Regime
+            Filter by {regimeEma} EMA Regime
           </label>
         </div>
 

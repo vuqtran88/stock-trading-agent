@@ -128,6 +128,7 @@ def get_portfolio(user: str = Depends(get_current_user)):
         regime_status=regime_status,
         qqq_price=qqq_p,
         qqq_ema20=qqq_ema,
+        regime_ema_period=ema_period,
     )
 
 

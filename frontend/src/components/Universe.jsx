@@ -557,7 +557,7 @@ export default function Universe() {
             <span className="font-semibold text-slate-300">How Regime Filtering Works:</span>
             <p className="text-slate-400 leading-relaxed text-[11px]">
               The Overnight Anomaly has positive expected value during bullish market regimes. If QQQ closes below its
-              20-day EMA, buy orders at market close will stand down automatically, avoiding heavy downside market drift.
+              configurable {emaPeriod}-day EMA, buy orders at market close will stand down automatically, avoiding heavy downside market drift.
             </p>
           </div>
         </div>

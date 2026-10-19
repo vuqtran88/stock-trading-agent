@@ -125,7 +125,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             custom_audit_dir=audit_dir_override,
         )
 
-    # 2. Check Market Regime (QQQ > 20 EMA)
+    # 2. Check Market Regime (QQQ > Configured EMA)
     bench_sym = settings.BENCHMARK_TICKER
     logger.info(f"Checking Market Regime on {bench_sym}...")
     bench_hist = fetcher.fetch_historical(bench_sym, start_date="2024-01-01", force_refresh=True)
@@ -135,28 +135,37 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         logger.error("Failed to retrieve valid benchmark data. Aborting routine for safety.")
         return None
 
-    bench_ema20 = float(bench_hist["Close"].ewm(span=settings.REGIME_EMA_PERIOD, adjust=False).mean().iloc[-1])
+    ema_period = settings.REGIME_EMA_PERIOD
+    if override_file.exists():
+        try:
+            with open(override_file, "r") as f:
+                cfg_data = json.load(f)
+                ema_period = cfg_data.get("regime_ema_period", ema_period)
+        except Exception:
+            pass
+
+    bench_ema = float(bench_hist["Close"].ewm(span=ema_period, adjust=False).mean().iloc[-1])
     bench_current = float(bench_quote["last_price"])
-    is_bullish = bench_current >= bench_ema20
+    is_bullish = bench_current >= bench_ema
     regime_status = "BULL" if is_bullish else "BEAR"
 
-    logger.info(f"{bench_sym} Current: ${bench_current:.2f} | 20 EMA: ${bench_ema20:.2f} [{regime_status}]")
+    logger.info(f"{bench_sym} Current: ${bench_current:.2f} | {ema_period} EMA: ${bench_ema:.2f} [{regime_status}]")
 
     tickers = settings.ticker_list
 
     if not is_bullish:
         logger.warning(
-            f"MARKET REGIME: BEARISH ({bench_sym} ${bench_current:.2f} < 20 EMA ${bench_ema20:.2f}). "
+            f"MARKET REGIME: BEARISH ({bench_sym} ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f}). "
             f"Taking 0 trades today. Account sits 100% in CASH."
         )
         notifier = DiscordNotifier()
         notifier.notify_routine_status(
             routine_name="🔔 Market Close Scan Checked",
-            message=f"Market Regime is **BEARISH** ({bench_sym} ${bench_current:.2f} < 20 EMA ${bench_ema20:.2f}). Sitting 100% in **CASH** ($0 deployed).",
+            message=f"Market Regime is **BEARISH** ({bench_sym} ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f}). Sitting 100% in **CASH** ($0 deployed).",
             trigger_source=trigger_source,
             env=settings.ENV,
             details=[
-                {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} (EMA: ${bench_ema20:.2f})", "inline": True},
+                {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} ({ema_period} EMA: ${bench_ema:.2f})", "inline": True},
                 {"name": "Regime Filter", "value": "❌ BEAR (Cash Protection)", "inline": True},
                 {"name": "Orders Placed", "value": "0", "inline": True},
             ],
@@ -164,11 +173,11 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         return DecisionDossier.create_close_dossier(
             regime_status="BEAR",
             qqq_price=bench_current,
-            qqq_ema20=bench_ema20,
+            qqq_ema20=bench_ema,
             scanned_tickers=tickers,
             earnings_disqualified=[],
             candidate_rankings=[],
-            rejected_candidates=[{"ticker": t, "reason": "Market regime BEARISH (QQQ < 20 EMA)"} for t in tickers],
+            rejected_candidates=[{"ticker": t, "reason": f"Market regime BEARISH (QQQ < {ema_period} EMA)"} for t in tickers],
             risk_proposals=[],
             risk_rejections=[],
             approved_orders=[],
@@ -308,7 +317,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     # Send Discord notification
     notifier = DiscordNotifier()
-    regime_str = f"QQQ ${bench_current:.2f} >= 20 EMA ${bench_ema20:.2f} (BULL)"
+    regime_str = f"QQQ ${bench_current:.2f} >= {ema_period} EMA ${bench_ema:.2f} (BULL)"
 
     if executed_order_reports:
         notifier.notify_buy_orders(
@@ -324,7 +333,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         # Zero buy orders placed (e.g. insufficient cash for high share prices or exposure reached)
         rejection_summary = "\n".join(f"• {r}" for r in rejections[:3]) if rejections else "All candidates filtered by constraints."
         details = [
-            {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} (EMA: ${bench_ema20:.2f})", "inline": True},
+            {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} ({ema_period} EMA: ${bench_ema:.2f})", "inline": True},
             {"name": "Available Cash", "value": f"${starting_cash:,.2f}", "inline": True},
             {"name": "Orders Executed", "value": "0", "inline": True},
         ]
@@ -343,7 +352,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
     return DecisionDossier.create_close_dossier(
         regime_status="BULL",
         qqq_price=bench_current,
-        qqq_ema20=bench_ema20,
+        qqq_ema20=bench_ema,
         scanned_tickers=tickers,
         earnings_disqualified=earnings_disqualified,
         candidate_rankings=ranked_display,
