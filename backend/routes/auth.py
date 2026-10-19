@@ -30,12 +30,20 @@ def verify_token(token: str) -> bool:
 
 
 def get_current_user(request: Request) -> str:
-    """Dependency to enforce authenticated access via cookie or Bearer header."""
+    """Dependency to enforce authenticated access via cookie, Bearer header, or X-Cron-Key."""
+    # 1. Check for Cloud Scheduler Cron API Key (via X-Cron-Key or Bearer)
+    cron_header = request.headers.get("X-Cron-Key")
+    if cron_header and settings.CRON_API_KEY and cron_header == settings.CRON_API_KEY:
+        return "cron-scheduler"
+
+    # 2. Check for cookie or Bearer token
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
+            if settings.CRON_API_KEY and token == settings.CRON_API_KEY:
+                return "cron-scheduler"
 
     if not token or not verify_token(token):
         raise HTTPException(status_code=401, detail="Unauthorized access. Please log in.")

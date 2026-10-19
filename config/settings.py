@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DASHBOARD_PASSWORD: str = "admin123"
     JWT_SECRET_KEY: str = "stock-trading-agent-secure-secret-key-2026"
     JWT_ALGORITHM: str = "HS256"
+    CRON_API_KEY: str = "alphadrift-cron-auth-token-2026"
 
     # Universe
     TICKERS: str = "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA"
