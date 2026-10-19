@@ -276,15 +276,37 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
     ending_cash = float(broker.get_cash_balance())
     overnight_exposure = sum(p.shares * p.entry_price for p in broker.get_positions().values())
 
-    # Send Discord notification if enabled
+    # Send Discord notification
+    notifier = DiscordNotifier()
+    regime_str = f"QQQ ${bench_current:.2f} >= 20 EMA ${bench_ema20:.2f} (BULL)"
+
     if executed_order_reports:
-        notifier = DiscordNotifier()
-        regime_str = f"QQQ ${bench_current:.2f} > 20 EMA ${bench_ema20:.2f} (BULL)"
         notifier.notify_buy_orders(
             orders=executed_order_reports,
             regime_info=regime_str,
             total_cost=sum(o["total_value"] for o in executed_order_reports),
+            cash_balance=ending_cash,
+            rejections=rejections,
+            trigger_source=trigger_source,
             env=settings.ENV,
+        )
+    else:
+        # Zero buy orders placed (e.g. insufficient cash for high share prices or exposure reached)
+        rejection_summary = "\n".join(f"• {r}" for r in rejections[:3]) if rejections else "All candidates filtered by constraints."
+        details = [
+            {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} (EMA: ${bench_ema20:.2f})", "inline": True},
+            {"name": "Available Cash", "value": f"${starting_cash:,.2f}", "inline": True},
+            {"name": "Orders Executed", "value": "0", "inline": True},
+        ]
+        if rejections:
+            details.append({"name": "🛡️ Rejection Rationale", "value": rejection_summary, "inline": False})
+
+        notifier.notify_routine_status(
+            routine_name="🔔 Afternoon Buy Scan Checked",
+            message=f"Market Regime is **BULLISH**, but **0 orders were placed** (insufficient cash or stock price too high). Sitting in **CASH**.",
+            trigger_source=trigger_source,
+            env=settings.ENV,
+            details=details,
         )
 
     # 7. Generate & Persist Verbose Decision Dossier

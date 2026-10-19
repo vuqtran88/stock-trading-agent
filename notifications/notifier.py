@@ -58,22 +58,47 @@ class DiscordNotifier:
             logger.warning(f"Discord notification error: {e}")
             return False
 
-    def notify_buy_orders(self, orders: List[Dict], regime_info: str, total_cost: float, env: str = "live"):
-        """Notify Discord when buy orders are placed near close."""
+    def notify_buy_orders(
+        self,
+        orders: List[Dict],
+        regime_info: str,
+        total_cost: float,
+        cash_balance: float = 0.0,
+        rejections: Optional[List[str]] = None,
+        trigger_source: str = "SCHEDULED",
+        env: str = "live",
+    ):
+        """Notify Discord when buy orders are placed near close, including sizing & rejection rationale."""
+        source_badge = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
         fields = []
         for o in orders:
             fields.append({
-                "name": f"{o['ticker']} (BUY)",
+                "name": f"🟢 {o['ticker']} (BUY)",
                 "value": f"{o['shares']} shares @ ${o['fill_price']:.2f} = **${o['total_value']:,.2f}**",
                 "inline": True,
             })
 
+        if cash_balance > 0:
+            fields.append({
+                "name": "💵 Remaining Cash",
+                "value": f"${cash_balance:,.2f}",
+                "inline": True,
+            })
+
+        if rejections:
+            rejection_text = "\n".join(f"• {r}" for r in rejections[:4])
+            fields.append({
+                "name": "🛡️ Risk Manager Rejections (Why skipped)",
+                "value": rejection_text,
+                "inline": False,
+            })
+
         embed = {
             "title": f"🔔 Market Close Buy Routine Executed [{env.upper()}]",
-            "description": f"**Market Regime:** {regime_info}\n**Total Deployed:** ${total_cost:,.2f}",
+            "description": f"**Triggered By:** {source_badge}\n**Market Regime:** {regime_info}\n**Total Deployed:** ${total_cost:,.2f}",
             "color": 3066993,  # Green
             "fields": fields,
-            "footer": {"text": "Stock Trading Agent • Buy-at-Close"},
+            "footer": {"text": f"Stock Trading Agent • Buy-at-Close • {source_badge}"},
         }
         url = self._get_webhook_for_env(env)
         self.send_message(content="", embed=embed, webhook_url=url)
