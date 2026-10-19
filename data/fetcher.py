@@ -51,11 +51,19 @@ class MarketDataFetcher:
                 df = pd.read_parquet(cache_file)
                 if not df.empty:
                     # Check if cache starts on or before requested start_date
-                    req_start = pd.to_datetime(start_date)
+                    req_start = pd.to_datetime(start_date).tz_localize(None)
                     df_start = pd.to_datetime(df.index[0]).tz_localize(None)
                     if df_start <= req_start:
-                        logger.debug(f"Loaded {ticker} ({interval}) from cache: {len(df)} rows.")
-                        return df
+                        # Slice to requested date range
+                        filtered = df.copy()
+                        idx_naive = pd.to_datetime(filtered.index).tz_localize(None)
+                        mask = idx_naive >= req_start
+                        if end_date:
+                            req_end = pd.to_datetime(end_date).tz_localize(None)
+                            mask = mask & (idx_naive <= req_end)
+                        filtered = filtered.loc[mask]
+                        logger.debug(f"Loaded {ticker} ({interval}) from cache: {len(filtered)} rows.")
+                        return filtered
             except Exception as e:
                 logger.warning(f"Error reading cache for {ticker}: {e}. Re-downloading...")
 
