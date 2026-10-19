@@ -69,9 +69,39 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             with open(override_file, "r") as f:
                 cfg_data = json.load(f)
                 if cfg_data.get("strategy_enabled") is False and not broker_override:
-                    logger.warning("Automated execution is currently PAUSED by user in config settings.")
-        except Exception:
-            pass
+                    logger.warning("Automated execution is currently PAUSED by user in config settings. Halting routine.")
+                    notifier = DiscordNotifier()
+                    notifier.notify_routine_status(
+                        routine_name="⏸️ Market Close Scan Paused",
+                        message="Strategy execution is currently **PAUSED** by user in config. Close routine halted — taking 0 trades.",
+                        trigger_source=trigger_source,
+                        env=settings.ENV,
+                        details=[
+                            {"name": "Status", "value": "⏸️ PAUSED_BY_USER", "inline": True},
+                            {"name": "Action", "value": "Skipped (0 trades placed)", "inline": True},
+                        ],
+                    )
+                    return DecisionDossier.create_close_dossier(
+                        regime_status="PAUSED_BY_USER",
+                        qqq_price=0.0,
+                        qqq_ema20=0.0,
+                        scanned_tickers=[],
+                        earnings_disqualified=[],
+                        candidate_rankings=[],
+                        rejected_candidates=[{"ticker": "ALL", "reason": "Strategy execution paused by user"}],
+                        risk_proposals=[],
+                        risk_rejections=["Strategy execution paused by user"],
+                        approved_orders=[],
+                        executed_orders=[],
+                        starting_cash=starting_cash,
+                        ending_cash=starting_cash,
+                        overnight_exposure=0.0,
+                        env=settings.ENV,
+                        custom_audit_dir=audit_dir_override,
+                    )
+        except Exception as e:
+            logger.error(f"Error checking strategy_enabled config: {e}")
+
 
     # 1. Kill Switch Check
     if risk_mgr.is_kill_switch_active():
