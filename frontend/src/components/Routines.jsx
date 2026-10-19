@@ -21,6 +21,7 @@ export default function Routines({
     }
   });
 
+  const [serverLogs, setServerLogs] = useState([]);
   const [daemonStatus, setDaemonStatus] = useState(null);
   const [config, setConfig] = useState(null);
   const [pageSize, setPageSize] = useState(10);
@@ -36,9 +37,10 @@ export default function Routines({
 
   const fetchStatusAndConfig = async () => {
     try {
-      const [dRes, cRes] = await Promise.all([
+      const [dRes, cRes, aRes] = await Promise.all([
         fetch('/api/trading/daemon-status'),
         fetch('/api/config'),
+        fetch('/api/trading/activity-logs'),
       ]);
       if (dRes.ok) {
         const dData = await dRes.json();
@@ -48,6 +50,12 @@ export default function Routines({
         const cData = await cRes.json();
         setConfig(cData);
       }
+      if (aRes.ok) {
+        const aData = await aRes.json();
+        if (Array.isArray(aData)) {
+          setServerLogs(aData);
+        }
+      }
     } catch (e) {
       console.error('Error fetching routine status:', e);
     }
@@ -55,7 +63,7 @@ export default function Routines({
 
   useEffect(() => {
     fetchStatusAndConfig();
-    const interval = setInterval(fetchStatusAndConfig, 8000);
+    const interval = setInterval(fetchStatusAndConfig, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -158,17 +166,19 @@ export default function Routines({
     ]);
   };
 
-  const handleClearAllLogs = () => {
+  const handleClearAllLogs = async () => {
     if (confirm('Clear all action output logs?')) {
       setInternalLogs([]);
+      setServerLogs([]);
       try {
         localStorage.removeItem('internal_action_logs');
+        await fetch('/api/trading/activity-logs/clear', { method: 'POST' });
       } catch {}
       if (onClearLogs) onClearLogs();
     }
   };
 
-  // Combine and normalize external and internal logs
+  // Combine and normalize external, internal, and server activity logs
   const allLogs = useMemo(() => {
     const normalizedExt = (externalLogs || []).map((l, idx) => {
       if (typeof l === 'string') {
@@ -187,13 +197,14 @@ export default function Routines({
       return l;
     });
 
-    // Merge internal logs and external logs
-    const combined = [...internalLogs, ...normalizedExt];
+    // Merge serverLogs, internal logs, and external logs
+    const combined = [...serverLogs, ...internalLogs, ...normalizedExt];
     // Remove exact duplicate text+time if any
     const seen = new Set();
     const unique = [];
     for (const item of combined) {
-      const key = `${item.time}-${item.text}`;
+      const cleanText = (item.text || '').replace(/^\[(CRON|MANUAL)\]\s*/, '');
+      const key = `${item.time}-${cleanText}`;
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(item);
@@ -204,7 +215,7 @@ export default function Routines({
       return [...unique].reverse();
     }
     return unique;
-  }, [internalLogs, externalLogs, sortOrder]);
+  }, [serverLogs, internalLogs, externalLogs, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(allLogs.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -420,27 +431,45 @@ export default function Routines({
 
           {/* Log Window */}
           <div className="space-y-1.5 bg-slate-950/90 p-3 rounded-lg border border-slate-800/80 min-h-24 max-h-56 overflow-y-auto font-mono text-[11px]">
-            {pagedLogs.map((l) => (
-              <div key={l.id} className="flex items-start space-x-2 py-0.5 border-b border-slate-900/50 last:border-0">
-                {l.time && <span className="text-slate-500 shrink-0 font-mono text-[10px] pt-0.5">[{l.time}]</span>}
-                {l.type === 'success' ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                ) : l.type === 'error' ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
-                ) : (
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1.5 mr-1 ml-0.5" />
-                )}
-                <span className={`break-all ${
-                  l.type === 'success'
-                    ? 'text-emerald-200'
-                    : l.type === 'error'
-                    ? 'text-rose-300'
-                    : 'text-slate-300'
-                }`}>
-                  {l.text}
-                </span>
-              </div>
-            ))}
+            {pagedLogs.map((l) => {
+              const isCron = (l.source === 'SCHEDULED') || (l.text && l.text.startsWith('[CRON]'));
+              const isManual = (l.source === 'MANUAL') || (l.text && l.text.startsWith('[MANUAL]'));
+              const displayText = (l.text || '').replace(/^\[(CRON|MANUAL)\]\s*/, '');
+
+              return (
+                <div key={l.id} className="flex items-start space-x-2 py-0.5 border-b border-slate-900/50 last:border-0">
+                  {l.time && <span className="text-slate-500 shrink-0 font-mono text-[10px] pt-0.5">[{l.time}]</span>}
+                  
+                  {isCron ? (
+                    <span className="shrink-0 px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-sans font-bold">
+                      CRON
+                    </span>
+                  ) : isManual ? (
+                    <span className="shrink-0 px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-sans font-bold">
+                      MANUAL
+                    </span>
+                  ) : null}
+
+                  {l.type === 'success' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : l.type === 'error' ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1.5 mr-1 ml-0.5" />
+                  )}
+
+                  <span className={`break-all ${
+                    l.type === 'success'
+                      ? 'text-emerald-200'
+                      : l.type === 'error'
+                      ? 'text-rose-300'
+                      : 'text-slate-300'
+                  }`}>
+                    {displayText}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Pagination Navigation Footer */}

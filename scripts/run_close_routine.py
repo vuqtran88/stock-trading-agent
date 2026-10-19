@@ -47,10 +47,11 @@ def get_broker():
         return PaperBroker()
 
 
-def run_close_routine(broker_override=None, fetcher_override=None, earnings_filter_override=None, audit_dir_override=None):
+def run_close_routine(broker_override=None, fetcher_override=None, earnings_filter_override=None, audit_dir_override=None, trigger_source: str = "SCHEDULED"):
     """Execute Afternoon Close Buy Routine with full verbose dossier generation."""
+    source_label = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
     logger.info("=" * 65)
-    logger.info("STARTING AFTERNOON CLOSE ROUTINE (3:50 PM ET)")
+    logger.info(f"STARTING AFTERNOON CLOSE ROUTINE (3:50 PM ET) [{source_label}]")
     logger.info("=" * 65)
 
     fetcher = fetcher_override or MarketDataFetcher()
@@ -117,6 +118,18 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         logger.warning(
             f"MARKET REGIME: BEARISH ({bench_sym} ${bench_current:.2f} < 20 EMA ${bench_ema20:.2f}). "
             f"Taking 0 trades today. Account sits 100% in CASH."
+        )
+        notifier = DiscordNotifier()
+        notifier.notify_routine_status(
+            routine_name="🔔 Market Close Scan Checked",
+            message=f"Market Regime is **BEARISH** ({bench_sym} ${bench_current:.2f} < 20 EMA ${bench_ema20:.2f}). Sitting 100% in **CASH** ($0 deployed).",
+            trigger_source=trigger_source,
+            env=settings.ENV,
+            details=[
+                {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} (EMA: ${bench_ema20:.2f})", "inline": True},
+                {"name": "Regime Filter", "value": "❌ BEAR (Cash Protection)", "inline": True},
+                {"name": "Orders Placed", "value": "0", "inline": True},
+            ],
         )
         return DecisionDossier.create_close_dossier(
             regime_status="BEAR",

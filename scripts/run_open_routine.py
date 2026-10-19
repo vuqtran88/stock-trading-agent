@@ -40,10 +40,11 @@ def get_broker():
         return PaperBroker()
 
 
-def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_override=None):
+def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_override=None, trigger_source: str = "SCHEDULED"):
     """Execute Morning Open Sell Routine with full verbose dossier generation."""
+    source_label = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
     logger.info("=" * 65)
-    logger.info("STARTING MORNING OPEN ROUTINE (9:28 AM ET)")
+    logger.info(f"STARTING MORNING OPEN ROUTINE (9:28 AM ET) [{source_label}]")
     logger.info("=" * 65)
 
     broker = broker_override or get_broker()
@@ -55,6 +56,17 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
     positions = broker.get_positions()
     if not positions:
         logger.info("No open overnight positions found in ledger. Account is already 100% in CASH.")
+        notifier = DiscordNotifier()
+        notifier.notify_routine_status(
+            routine_name="☀️ Morning Exit Routine Checked",
+            message=f"Account is already 100% in **CASH** (${starting_cash:,.2f}). 0 overnight positions required liquidation.",
+            trigger_source=trigger_source,
+            env=settings.ENV,
+            details=[
+                {"name": "Total Liquidations", "value": "0 positions", "inline": True},
+                {"name": "Settled Cash", "value": f"${starting_cash:,.2f}", "inline": True},
+            ],
+        )
         return DecisionDossier.create_open_dossier(
             liquidated_positions=[],
             starting_cash=starting_cash,

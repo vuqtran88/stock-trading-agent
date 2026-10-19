@@ -101,6 +101,19 @@ class DiscordNotifier:
         url = self._get_webhook_for_env(env)
         self.send_message(content="", embed=embed, webhook_url=url)
 
+    def notify_routine_status(self, routine_name: str, message: str, trigger_source: str = "SCHEDULED", env: str = "paper", details: Optional[List[Dict]] = None):
+        """Notify Discord when a routine executes even if 0 trades are made (heartbeat & audit)."""
+        source_badge = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
+        embed = {
+            "title": f"📋 {routine_name} Completed [{env.upper()}]",
+            "description": f"**Triggered By:** {source_badge}\n**Status:** {message}",
+            "color": 3447003,  # Blue/Informational
+            "fields": details or [],
+            "footer": {"text": f"Stock Trading Agent • {source_badge}"},
+        }
+        url = self._get_webhook_for_env(env)
+        self.send_message(content="", embed=embed, webhook_url=url)
+
     def notify_emergency_stop(self, reason: str, flattened_count: int, cash_balance: float):
         """Notify Discord when the emergency kill switch is tripped."""
         embed = {

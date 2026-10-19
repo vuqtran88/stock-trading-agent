@@ -24,6 +24,36 @@ router = APIRouter(prefix="/api/trading", tags=["trading"])
 fetcher = MarketDataFetcher()
 risk_mgr = RiskManager()
 
+ACTIVITY_LOG_FILE = settings.DATA_DIR / "action_activity_logs.json"
+
+
+def record_server_activity(text: str, event_type: str = "info", source: str = "SCHEDULED"):
+    """Persist an execution activity to disk so web dashboard can display both scheduled & manual events."""
+    try:
+        settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        logs = []
+        if ACTIVITY_LOG_FILE.exists():
+            with open(ACTIVITY_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        
+        now = datetime.now()
+        time_str = now.strftime("%I:%M:%S %p")
+        badge = "[CRON]" if source.upper() == "SCHEDULED" else "[MANUAL]"
+        entry = {
+            "id": f"{int(now.timestamp() * 1000)}-{len(logs)}",
+            "time": time_str,
+            "text": f"{badge} {text}",
+            "type": event_type,
+            "source": source.upper(),
+            "timestamp": now.isoformat(),
+        }
+        # Prepend new entry, retain up to 300 activities
+        logs = [entry] + logs[:299]
+        with open(ACTIVITY_LOG_FILE, "w") as f:
+            json.dump(logs, f, indent=2)
+    except Exception as e:
+        print(f"Error persisting server activity log: {e}")
+
 
 def get_current_broker():
     """Instantiate active broker based on overrides or settings."""
@@ -133,10 +163,19 @@ def execute_manual_order(req: ManualOrderRequest, user: str = Depends(get_curren
 def trigger_close_routine(user: str = Depends(get_current_user)):
     """Trigger the 3:50 PM ET afternoon buy routine scan and execution."""
     from scripts.run_close_routine import run_close_routine
+    source = "SCHEDULED" if user == "cron-scheduler" else "MANUAL"
     try:
-        dossier = run_close_routine()
+        dossier = run_close_routine(trigger_source=source)
+        regime = dossier.get("market_regime", {}).get("status", "BULL") if dossier else "BULL"
+        orders_count = len(dossier.get("executed_orders", [])) if dossier else 0
+        record_server_activity(
+            f"Afternoon Close Routine ({regime}): {orders_count} buy order(s) placed.",
+            event_type="success" if orders_count > 0 or regime == "BEAR" else "info",
+            source=source,
+        )
         return {"success": True, "message": "Close routine executed successfully.", "dossier": dossier}
     except Exception as e:
+        record_server_activity(f"Afternoon Close Routine Failed: {e}", event_type="error", source=source)
         raise HTTPException(status_code=500, detail=f"Error executing close routine: {e}")
 
 
@@ -144,10 +183,20 @@ def trigger_close_routine(user: str = Depends(get_current_user)):
 def trigger_open_routine(user: str = Depends(get_current_user)):
     """Trigger the 9:28 AM ET morning sell routine to liquidate overnight holdings."""
     from scripts.run_open_routine import run_open_routine
+    source = "SCHEDULED" if user == "cron-scheduler" else "MANUAL"
     try:
-        dossier = run_open_routine()
+        dossier = run_open_routine(trigger_source=source)
+        liquidations = len(dossier.get("liquidated_positions", [])) if dossier else 0
+        pnl = dossier.get("total_net_pnl", 0.0) if dossier else 0.0
+        msg = f"Morning Open Routine: Liquidated {liquidations} position(s). P&L: ${pnl:+,.2f}." if liquidations > 0 else "Morning Open Routine: 0 positions to liquidate (Account 100% Cash)."
+        record_server_activity(
+            msg,
+            event_type="success" if liquidations > 0 else "info",
+            source=source,
+        )
         return {"success": True, "message": "Open routine executed successfully.", "dossier": dossier}
     except Exception as e:
+        record_server_activity(f"Morning Open Routine Failed: {e}", event_type="error", source=source)
         raise HTTPException(status_code=500, detail=f"Error executing open routine: {e}")
 
 
@@ -334,3 +383,26 @@ def get_schwab_status(user: str = Depends(get_current_user)):
             "error": str(e),
             "detail": "Failed to connect to Schwab or verify token refresh.",
         }
+
+
+@router.get("/activity-logs")
+def get_activity_logs(user: str = Depends(get_current_user)):
+    """Retrieve server-side action and routine activities with execution source (Cron vs Manual)."""
+    if ACTIVITY_LOG_FILE.exists():
+        try:
+            with open(ACTIVITY_LOG_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+@router.post("/activity-logs/clear")
+def clear_activity_logs(user: str = Depends(get_current_user)):
+    """Clear server-side activity logs."""
+    try:
+        if ACTIVITY_LOG_FILE.exists():
+            ACTIVITY_LOG_FILE.unlink()
+        return {"success": True, "message": "Server activity logs cleared."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear activity logs: {e}")
