@@ -24,6 +24,7 @@ export default function App() {
   const [portfolio, setPortfolio] = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(true);
   const [config, setConfig] = useState(null);
+  const [schwabStatus, setSchwabStatus] = useState(null);
 
   // Routine execution logs (persisted in localStorage)
   const [routineLogs, setRoutineLogs] = useState(() => {
@@ -89,18 +90,33 @@ export default function App() {
     }
   };
 
+  // Fetch live Schwab broker status
+  const fetchSchwabStatus = async () => {
+    try {
+      const res = await fetch('/api/trading/schwab-status');
+      if (res.ok) {
+        const data = await res.json();
+        setSchwabStatus(data);
+      }
+    } catch (err) {
+      console.error('Error fetching Schwab status:', err);
+    }
+  };
+
   useEffect(() => {
     checkAuth();
   }, []);
 
-  // Poll portfolio & config every 6s when authenticated
+  // Poll portfolio, config & schwab status every 6s when authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchPortfolio();
     fetchConfig();
+    fetchSchwabStatus();
     const interval = setInterval(() => {
       fetchPortfolio();
       fetchConfig();
+      fetchSchwabStatus();
     }, 6000);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
@@ -262,6 +278,7 @@ export default function App() {
       <Navbar
         portfolio={portfolio}
         config={config}
+        schwabStatus={schwabStatus}
         onToggleEnv={handleToggleEnv}
         onEmergencyFlatten={handleEmergencyFlatten}
         onResetEmergency={handleResetEmergency}

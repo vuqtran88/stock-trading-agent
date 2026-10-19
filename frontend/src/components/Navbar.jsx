@@ -15,6 +15,7 @@ import {
 export default function Navbar({ 
   portfolio, 
   config,
+  schwabStatus,
   onToggleEnv,
   onEmergencyFlatten, 
   onResetEmergency, 
@@ -66,7 +67,7 @@ export default function Navbar({
           </div>
 
           {/* QQQ Regime Pill */}
-          <div className="hidden md:flex items-center space-x-2.5 px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
+          <div className="hidden lg:flex items-center space-x-2.5 px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-400 font-medium">QQQ Regime:</span>
             <span className="font-semibold text-white">${portfolio?.qqq_price?.toFixed(2) || '---'}</span>
@@ -78,6 +79,39 @@ export default function Navbar({
               <span>{isBull ? 'BULL (ACTIVE)' : 'BEAR (CASH)'}</span>
             </div>
           </div>
+
+          {/* Schwab Connection Badge */}
+          {schwabStatus && (
+            <div 
+              title={
+                schwabStatus.connected
+                  ? `Schwab Live API Connected\nAccount: ${schwabStatus.account_hash_short || 'Active'}\nSettled Cash: $${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nActive Positions: ${schwabStatus.positions_count || 0}`
+                  : `Schwab Disconnected: ${schwabStatus.error || 'Token expired or invalid credentials'}`
+              }
+              className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                schwabStatus.connected
+                  ? 'bg-slate-900/80 border-sky-500/30 text-slate-200'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${
+                schwabStatus.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-pulse' : 'bg-rose-500'
+              }`} />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="font-bold text-[11px] text-sky-400">SCHWAB</span>
+                  <span className={`text-[10px] font-semibold ${schwabStatus.connected ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {schwabStatus.connected ? 'LIVE' : 'OFFLINE'}
+                  </span>
+                </div>
+                {schwabStatus.connected && (
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    ${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Emergency Stop & Controls */}

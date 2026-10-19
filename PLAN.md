@@ -210,3 +210,19 @@ stock-trading-agent/
 └── README.md
 ```
 
+---
+
+## 4. Product & Operational Backlog
+
+### Backlog Item 1: Automated Schwab Refresh Token Expiration & Renewal
+- **Description**: Proactive warning and fast-renewal system for Charles Schwab's 7-day OAuth2 refresh token limit.
+- **Key Tasks**:
+  1. Record `created_at` timestamp in `schwab_token.json` to calculate remaining days/hours before token expiry.
+  2. Implement proactive Discord alerts at 48 hours and 24 hours prior to expiration with explicit re-authentication instructions.
+  3. Create a single-command renewal script (`scripts/schwab_refresh_and_sync.py`) that performs local OAuth authentication and automatically pushes the new token to GCP Secret Manager (`schwab-token-data`) in one step.
+  4. (Optional) Provide in-app 1-click renewal flow via web dashboard OAuth redirect callback endpoint (`/api/auth/schwab/callback`).
+
+### Backlog Item 2: Schwab Live Connection & Balance Status Badge in Frontend
+- **Active Task**: Real-time Schwab health badge in the UI (Navbar / Settings tab) displaying live connection status, settled cash balance, and account hash without requiring backend log inspection.
+
+

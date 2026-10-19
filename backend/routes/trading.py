@@ -369,12 +369,19 @@ def get_schwab_status(user: str = Depends(get_current_user)):
             {"ticker": sym, "shares": pos.shares, "cost_basis": pos.entry_price}
             for sym, pos in positions.items()
         ]
+        
+        # Token details if available
+        auth_tokens = schwab.auth.tokens or {}
+        has_refresh_token = bool(auth_tokens.get("refresh_token"))
+        
         return {
             "connected": True,
             "account_hash": schwab.account_hash,
+            "account_hash_short": f"...{schwab.account_hash[-6:]}" if schwab.account_hash else "Unknown",
             "settled_cash": cash,
             "positions_count": len(positions),
             "positions": pos_summary,
+            "has_refresh_token": has_refresh_token,
             "token_source": "Secret Manager / Disk Cache",
         }
     except Exception as e:

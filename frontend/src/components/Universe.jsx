@@ -39,11 +39,15 @@ export default function Universe() {
   const [closeRoutineTime, setCloseRoutineTime] = useState('15:50');
   const [openRoutineTime, setOpenRoutineTime] = useState('09:28');
   const [availableStrategies, setAvailableStrategies] = useState([]);
+  const [schwabData, setSchwabData] = useState(null);
 
   const fetchConfig = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/config');
+      const [res, sRes] = await Promise.all([
+        fetch('/api/config'),
+        fetch('/api/trading/schwab-status'),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
@@ -59,8 +63,12 @@ export default function Universe() {
         setOpenRoutineTime(data.open_routine_time || '09:28');
         setAvailableStrategies(data.available_strategies || []);
       }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setSchwabData(sData);
+      }
     } catch (err) {
-      console.error('Failed to load config:', err);
+      console.error('Failed to load config or Schwab status:', err);
     } finally {
       setLoading(false);
     }
@@ -217,6 +225,50 @@ export default function Universe() {
             </button>
           </div>
         </div>
+
+        {/* Live Schwab Account Diagnostic Card */}
+        {schwabData && (
+          <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                schwabData.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-pulse' : 'bg-rose-500'
+              }`} />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-200">Charles Schwab Trader API</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    schwabData.connected ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                  }`}>
+                    {schwabData.connected ? 'CONNECTED' : 'DISCONNECTED'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {schwabData.connected
+                    ? `Account Hash: ${schwabData.account_hash_short || 'Active'} • Token: Secret Manager (${schwabData.has_refresh_token ? 'Refreshable' : 'Static'})`
+                    : schwabData.error || 'Failed to authenticate with Schwab'}
+                </p>
+              </div>
+            </div>
+
+            {schwabData.connected && (
+              <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 px-3.5 py-2 rounded-xl">
+                <div>
+                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Settled Cash</span>
+                  <span className="text-sm font-bold font-mono text-emerald-400">
+                    ${Number(schwabData.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-800" />
+                <div>
+                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Open Positions</span>
+                  <span className="text-sm font-bold font-mono text-white">
+                    {schwabData.positions_count || 0}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* STRATEGY SELECTION & LIFECYCLE (Issue 1 & 2) */}
