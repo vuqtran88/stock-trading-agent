@@ -66,13 +66,22 @@ class SchwabAuth:
         self._load_cached_tokens()
 
     def _load_cached_tokens(self):
-        """Load stored tokens from disk if present."""
+        """Load stored tokens from disk or from Secret Manager environment variable."""
         if self.token_file.exists():
             try:
                 with open(self.token_file, "r") as f:
                     self.tokens = json.load(f)
+                    return
             except Exception as e:
                 logger.warning(f"Error reading token file: {e}")
+
+        # Fallback to SCHWAB_TOKEN_DATA (injected from GCP Secret Manager)
+        if settings.SCHWAB_TOKEN_DATA:
+            try:
+                self.tokens = json.loads(settings.SCHWAB_TOKEN_DATA)
+                logger.info("Loaded Schwab OAuth tokens from Secret Manager environment.")
+            except Exception as e:
+                logger.warning(f"Failed to parse SCHWAB_TOKEN_DATA JSON from Secret Manager: {e}")
 
     def _save_tokens(self, token_data: Dict):
         """Save tokens with calculated expiration timestamp."""

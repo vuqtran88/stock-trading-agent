@@ -307,3 +307,30 @@ def get_trade_history(user: str = Depends(get_current_user)):
     history = broker.ledger.get("trade_history", [])
     # Return reverse chronological
     return {"history": list(reversed(history))}
+
+
+@router.get("/schwab-status")
+def get_schwab_status(user: str = Depends(get_current_user)):
+    """Read-only diagnostic endpoint to verify live Schwab connection, balance, and account state."""
+    try:
+        schwab = SchwabBroker()
+        cash = schwab.get_cash_balance()
+        positions = schwab.get_positions()
+        pos_summary = [
+            {"ticker": sym, "shares": pos.shares, "cost_basis": pos.entry_price}
+            for sym, pos in positions.items()
+        ]
+        return {
+            "connected": True,
+            "account_hash": schwab.account_hash,
+            "settled_cash": cash,
+            "positions_count": len(positions),
+            "positions": pos_summary,
+            "token_source": "Secret Manager / Disk Cache",
+        }
+    except Exception as e:
+        return {
+            "connected": False,
+            "error": str(e),
+            "detail": "Failed to connect to Schwab or verify token refresh.",
+        }

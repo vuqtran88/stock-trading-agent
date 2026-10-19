@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     SCHWAB_APP_SECRET: str = ""
     SCHWAB_CALLBACK_URL: str = "https://127.0.0.1:8080"
     SCHWAB_ACCOUNT_HASH: str = ""
+    SCHWAB_TOKEN_DATA: str = ""
 
     @property
     def ticker_list(self) -> List[str]:
