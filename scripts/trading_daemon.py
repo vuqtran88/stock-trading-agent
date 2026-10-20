@@ -85,15 +85,12 @@ def run_accelerated_sandbox(interval_sec: int):
 
 
 def load_daemon_config():
-    """Load dynamic settings from config_override.json or fallback to defaults."""
-    override_file = ROOT_DIR / "data_cache" / "config_override.json"
-    data = {}
-    if override_file.exists():
-        try:
-            with open(override_file, "r") as f:
-                data = json.load(f)
-        except Exception:
-            pass
+    """Load dynamic settings from get_active_overrides() or fallback to defaults."""
+    try:
+        from backend.routes.config import get_active_overrides
+        data = get_active_overrides()
+    except Exception:
+        data = {}
 
     active_strategy = data.get("active_strategy", "overnight_drift")
     strategy_enabled = data.get("strategy_enabled", True)

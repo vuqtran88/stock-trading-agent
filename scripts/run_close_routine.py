@@ -142,7 +142,8 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     logger.info(f"{bench_sym} Current: ${bench_current:.2f} | {ema_period} EMA: ${bench_ema:.2f} [{regime_status}]")
 
-    tickers = settings.ticker_list
+    tickers = cfg_data.get("tickers") or settings.ticker_list
+    top_n = max(1, int(cfg_data.get("top_n", 2)))
 
     if not is_bullish:
         logger.warning(
@@ -222,11 +223,11 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     # Sort descending by score
     candidates.sort(key=lambda x: x["score"], reverse=True)
-    top_candidates = candidates[:2]  # Default top 2
+    top_candidates = candidates[:top_n]
 
     ranked_display = []
     for rank_idx, c in enumerate(candidates, start=1):
-        decision = "SELECTED (Top 2)" if rank_idx <= 2 else "EXCLUDED (Cut by Top N=2)"
+        decision = f"SELECTED (Top {top_n})" if rank_idx <= top_n else f"EXCLUDED (Cut by Top N={top_n})"
         ranked_display.append({
             "rank": rank_idx,
             "ticker": c["ticker"],

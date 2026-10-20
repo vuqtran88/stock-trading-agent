@@ -48,10 +48,17 @@ class RiskManager:
         max_daily_loss_usd: Optional[float] = None,
         kill_switch_path: Optional[Path] = None,
     ):
+        cfg_data = {}
+        try:
+            from backend.routes.config import get_active_overrides
+            cfg_data = get_active_overrides()
+        except Exception:
+            pass
+
         self.max_position_size_usd = (
             max_position_size_usd
             if max_position_size_usd is not None
-            else settings.MAX_POSITION_SIZE_USD
+            else (cfg_data.get("max_position_size_usd") or settings.MAX_POSITION_SIZE_USD)
         )
         self.max_portfolio_exposure_usd = (
             max_portfolio_exposure_usd

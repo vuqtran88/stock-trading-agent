@@ -13,6 +13,12 @@ class DiscordNotifier:
     """Sends rich embed notifications to a configured Discord webhook."""
 
     def __init__(self, webhook_url: Optional[str] = None, env: Optional[str] = None):
+        if not env:
+            try:
+                from backend.routes.config import get_active_overrides
+                env = get_active_overrides().get("env")
+            except Exception:
+                pass
         target_env = (env or settings.ENV).lower()
         if webhook_url:
             self.webhook_url = webhook_url
@@ -28,6 +34,12 @@ class DiscordNotifier:
         return bool(self.webhook_url and self.webhook_url.startswith("https://discord.com/api/webhooks/"))
 
     def _get_webhook_for_env(self, env: Optional[str] = None) -> str:
+        if not env:
+            try:
+                from backend.routes.config import get_active_overrides
+                env = get_active_overrides().get("env")
+            except Exception:
+                pass
         target_env = (env or settings.ENV).lower()
         if target_env == "live" and settings.DISCORD_LIVE_WEBHOOK_URL:
             return settings.DISCORD_LIVE_WEBHOOK_URL
