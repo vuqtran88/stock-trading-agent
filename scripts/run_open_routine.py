@@ -19,6 +19,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from typing import Optional
+
 from config.settings import settings
 from execution.paper_broker import PaperBroker
 from execution.schwab_broker import SchwabBroker
@@ -30,9 +32,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("OpenRoutine")
 
 
-def get_broker():
-    """Instantiate broker based on settings.ENV."""
-    if settings.ENV == "live":
+def get_broker(active_env: Optional[str] = None):
+    """Instantiate broker based on active_env or settings.ENV."""
+    env = active_env or settings.ENV
+    if env == "live":
         logger.info("Operating in LIVE mode: Using SchwabBroker.")
         return SchwabBroker()
     else:
@@ -42,12 +45,16 @@ def get_broker():
 
 def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_override=None, trigger_source: str = "SCHEDULED"):
     """Execute Morning Open Sell Routine with full verbose dossier generation."""
+    from backend.routes.config import get_active_overrides
+    cfg_data = get_active_overrides()
+    active_env = cfg_data.get("env") or settings.ENV
+
     source_label = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
     logger.info("=" * 65)
-    logger.info(f"STARTING MORNING OPEN ROUTINE (9:28 AM ET) [{source_label}]")
+    logger.info(f"STARTING MORNING OPEN ROUTINE (9:28 AM ET) [{source_label}] [{active_env.upper()}]")
     logger.info("=" * 65)
 
-    broker = broker_override or get_broker()
+    broker = broker_override or get_broker(active_env=active_env)
     fetcher = fetcher_override or MarketDataFetcher()
 
     starting_cash = float(broker.get_cash_balance())
@@ -55,13 +62,13 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
     # 1. Query Open Overnight Positions
     positions = broker.get_positions()
     if not positions:
-        logger.info("No open overnight positions found in ledger. Account is already 100% in CASH.")
-        notifier = DiscordNotifier()
+        logger.info(f"No open overnight positions found in ledger. Account is already 100% in CASH (${starting_cash:,.2f}).")
+        notifier = DiscordNotifier(env=active_env)
         notifier.notify_routine_status(
             routine_name="☀️ Morning Exit Routine Checked",
             message=f"Account is already 100% in **CASH** (${starting_cash:,.2f}). 0 overnight positions required liquidation.",
             trigger_source=trigger_source,
-            env=settings.ENV,
+            env=active_env,
             details=[
                 {"name": "Total Liquidations", "value": "0 positions", "inline": True},
                 {"name": "Settled Cash", "value": f"${starting_cash:,.2f}", "inline": True},
@@ -73,7 +80,7 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
             ending_cash=starting_cash,
             total_proceeds=0.0,
             total_net_pnl=0.0,
-            env=settings.ENV,
+            env=active_env,
             custom_audit_dir=audit_dir_override,
         )
 
@@ -120,12 +127,12 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
 
     # Send Discord notification
     if executed_sell_reports:
-        notifier = DiscordNotifier()
+        notifier = DiscordNotifier(env=active_env)
         notifier.notify_sell_orders(
             reports=executed_sell_reports,
             total_pnl=total_realized_pnl,
             cash_balance=ending_cash,
-            env=settings.ENV,
+            env=active_env,
         )
 
     # Generate & Persist Verbose Decision Dossier
@@ -135,7 +142,7 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
         ending_cash=ending_cash,
         total_proceeds=total_proceeds,
         total_net_pnl=total_realized_pnl,
-        env=settings.ENV,
+        env=active_env,
         custom_audit_dir=audit_dir_override,
     )
 

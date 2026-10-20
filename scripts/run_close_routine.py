@@ -21,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from typing import Optional
 import numpy as np
 import pandas as pd
 
@@ -37,9 +38,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("CloseRoutine")
 
 
-def get_broker():
-    """Instantiate broker based on settings.ENV."""
-    if settings.ENV == "live":
+def get_broker(active_env: Optional[str] = None):
+    """Instantiate broker based on active_env or settings.ENV."""
+    env = active_env or settings.ENV
+    if env == "live":
         logger.info("Operating in LIVE mode: Using SchwabBroker.")
         return SchwabBroker()
     else:
@@ -49,30 +51,31 @@ def get_broker():
 
 def run_close_routine(broker_override=None, fetcher_override=None, earnings_filter_override=None, audit_dir_override=None, trigger_source: str = "SCHEDULED"):
     """Execute Afternoon Close Buy Routine with full verbose dossier generation."""
+    # 0. Strategy Active & Enabled Check (from config overrides / Secret Manager)
+    from backend.routes.config import get_active_overrides
+    cfg_data = get_active_overrides()
+    active_env = cfg_data.get("env") or settings.ENV
+
     source_label = "⏱️ SCHEDULED (Cron)" if trigger_source.upper() == "SCHEDULED" else "👤 MANUAL (Dashboard)"
     logger.info("=" * 65)
-    logger.info(f"STARTING AFTERNOON CLOSE ROUTINE (3:50 PM ET) [{source_label}]")
+    logger.info(f"STARTING AFTERNOON CLOSE ROUTINE (3:50 PM ET) [{source_label}] [{active_env.upper()}]")
     logger.info("=" * 65)
 
     fetcher = fetcher_override or MarketDataFetcher()
     risk_mgr = RiskManager()
-    broker = broker_override or get_broker()
+    broker = broker_override or get_broker(active_env=active_env)
     earnings_filter = earnings_filter_override or EarningsFilter()
-
 
     starting_cash = float(broker.get_cash_balance())
 
-    # 0. Strategy Active & Enabled Check (from config overrides / Secret Manager)
-    from backend.routes.config import get_active_overrides
-    cfg_data = get_active_overrides()
     if cfg_data.get("strategy_enabled") is False and not broker_override:
         logger.warning("Automated execution is currently PAUSED by user in config settings. Halting routine.")
-        notifier = DiscordNotifier()
+        notifier = DiscordNotifier(env=active_env)
         notifier.notify_routine_status(
             routine_name="⏸️ Market Close Scan Paused",
             message="Strategy execution is currently **PAUSED** by user in config. Close routine halted — taking 0 trades.",
             trigger_source=trigger_source,
-            env=settings.ENV,
+            env=active_env,
             details=[
                 {"name": "Status", "value": "⏸️ PAUSED_BY_USER", "inline": True},
                 {"name": "Action", "value": "Skipped (0 trades placed)", "inline": True},
@@ -93,7 +96,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             starting_cash=starting_cash,
             ending_cash=starting_cash,
             overnight_exposure=0.0,
-            env=settings.ENV,
+            env=active_env,
             custom_audit_dir=audit_dir_override,
         )
 
@@ -116,7 +119,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             starting_cash=starting_cash,
             ending_cash=starting_cash,
             overnight_exposure=0.0,
-            env=settings.ENV,
+            env=active_env,
             custom_audit_dir=audit_dir_override,
         )
 
@@ -146,12 +149,12 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             f"MARKET REGIME: BEARISH ({bench_sym} ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f}). "
             f"Taking 0 trades today. Account sits 100% in CASH."
         )
-        notifier = DiscordNotifier()
+        notifier = DiscordNotifier(env=active_env)
         notifier.notify_routine_status(
             routine_name="🔔 Market Close Scan Checked",
             message=f"Market Regime is **BEARISH** ({bench_sym} ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f}). Sitting 100% in **CASH** ($0 deployed).",
             trigger_source=trigger_source,
-            env=settings.ENV,
+            env=active_env,
             details=[
                 {"name": "Benchmark (QQQ)", "value": f"${bench_current:.2f} ({ema_period} EMA: ${bench_ema:.2f})", "inline": True},
                 {"name": "Regime Filter", "value": "❌ BEAR (Cash Protection)", "inline": True},
@@ -173,7 +176,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             starting_cash=starting_cash,
             ending_cash=starting_cash,
             overnight_exposure=0.0,
-            env=settings.ENV,
+            env=active_env,
             custom_audit_dir=audit_dir_override,
         )
 
@@ -239,7 +242,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         return DecisionDossier.create_close_dossier(
             regime_status="BULL",
             qqq_price=bench_current,
-            qqq_ema20=bench_ema20,
+            qqq_ema20=bench_ema,
             scanned_tickers=tickers,
             earnings_disqualified=earnings_disqualified,
             candidate_rankings=[],
@@ -251,15 +254,15 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             starting_cash=starting_cash,
             ending_cash=starting_cash,
             overnight_exposure=0.0,
-            env=settings.ENV,
+            env=active_env,
             custom_audit_dir=audit_dir_override,
         )
 
     # 4. Formulate Order Proposals
     target_budget = (
-        settings.LIVE_PILOT_BUDGET_USD
-        if settings.ENV == "live"
-        else settings.MAX_POSITION_SIZE_USD
+        cfg_data.get("live_pilot_budget_usd") or settings.LIVE_PILOT_BUDGET_USD
+        if active_env == "live"
+        else cfg_data.get("max_position_size_usd") or settings.MAX_POSITION_SIZE_USD
     )
 
     proposals = [
@@ -304,7 +307,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
     overnight_exposure = sum(p.shares * p.entry_price for p in broker.get_positions().values())
 
     # Send Discord notification
-    notifier = DiscordNotifier()
+    notifier = DiscordNotifier(env=active_env)
     regime_str = f"QQQ ${bench_current:.2f} >= {ema_period} EMA ${bench_ema:.2f} (BULL)"
 
     if executed_order_reports:
@@ -315,7 +318,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             cash_balance=ending_cash,
             rejections=rejections,
             trigger_source=trigger_source,
-            env=settings.ENV,
+            env=active_env,
         )
     else:
         # Zero buy orders placed (e.g. insufficient cash for high share prices or exposure reached)
@@ -332,7 +335,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
             routine_name="🔔 Afternoon Buy Scan Checked",
             message=f"Market Regime is **BULLISH**, but **0 orders were placed** (insufficient cash or stock price too high). Sitting in **CASH**.",
             trigger_source=trigger_source,
-            env=settings.ENV,
+            env=active_env,
             details=details,
         )
 
@@ -352,7 +355,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         starting_cash=starting_cash,
         ending_cash=ending_cash,
         overnight_exposure=overnight_exposure,
-        env=settings.ENV,
+        env=active_env,
         custom_audit_dir=audit_dir_override,
     )
 
