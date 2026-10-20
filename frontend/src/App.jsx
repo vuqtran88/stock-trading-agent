@@ -371,8 +371,8 @@ export default function App() {
               onClosePosition={handleClosePosition}
             />
 
-            {/* Bottom 2 columns: Automated Routine Actions & Manual Paper Order Desk */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bottom Section: Automated Routine Actions (Full width in LIVE, 2-column with Manual Paper Desk in PAPER) */}
+            <div className={`grid grid-cols-1 ${!isLive ? 'lg:grid-cols-2' : ''} gap-6`}>
               <Routines
                 onTrigger={handleTriggerRoutine}
                 runningRoutine={runningRoutine}
@@ -381,13 +381,15 @@ export default function App() {
                 isLive={isLive}
                 env={currentEnv}
               />
-              <OrderForm
-                isLive={isLive}
-                onOrderSuccess={(msg) => {
-                  addLog(msg);
-                  fetchPortfolio();
-                }}
-              />
+              {!isLive && (
+                <OrderForm
+                  isLive={isLive}
+                  onOrderSuccess={(msg) => {
+                    addLog(msg);
+                    fetchPortfolio();
+                  }}
+                />
+              )}
             </div>
           </div>
         )}

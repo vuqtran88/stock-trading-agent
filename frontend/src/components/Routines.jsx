@@ -250,8 +250,8 @@ export default function Routines({
           </p>
         </div>
 
-        {/* Paper-Exclusive Testing Toolbar (Hidden in LIVE for safety) */}
-        {!isLive ? (
+        {/* Paper-Exclusive Testing Toolbar (Hidden completely in LIVE mode) */}
+        {!isLive && (
           <div className="flex items-center gap-2">
             <button
               onClick={handleSeedPositions}
@@ -274,11 +274,6 @@ export default function Routines({
             >
               ⚡ Fast-Forward 24H
             </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            <span>Sandbox Seeding & Fast-Forward Disabled in LIVE</span>
           </div>
         )}
       </div>
