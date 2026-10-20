@@ -15,7 +15,11 @@ def test_api_status_unauthorized():
     assert resp.status_code == 401
 
 
-def test_login_and_authenticated_flow():
+def test_login_and_authenticated_flow(monkeypatch):
+    # Prevent unit tests from mutating production GCP Secret Manager config
+    from backend.routes import config
+    monkeypatch.setattr(config, "_sync_to_secret_manager", lambda overrides: None)
+
     # 1. Invalid password
     resp = client.post("/api/auth/login", json={"password": "wrongpassword"})
     assert resp.status_code == 401
