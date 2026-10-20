@@ -117,6 +117,8 @@ def get_portfolio(user: str = Depends(get_current_user)):
     else:
         exposure = sum(p.shares * p.entry_price for p in positions_map.values())
 
+    use_regime_filter = overrides.get("use_regime_filter", True)
+
     return PortfolioResponse(
         env=env,
         cash=cash,
@@ -129,6 +131,7 @@ def get_portfolio(user: str = Depends(get_current_user)):
         qqq_price=qqq_p,
         qqq_ema20=qqq_ema,
         regime_ema_period=ema_period,
+        use_regime_filter=use_regime_filter,
     )
 
 

@@ -67,20 +67,35 @@ export default function Navbar({
           </div>
 
           {/* QQQ Regime Pill */}
-          <div className="hidden lg:flex items-center space-x-2.5 px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
-            <Activity className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-400 font-medium">QQQ Regime:</span>
-            <span className="font-semibold text-white">${portfolio?.qqq_price?.toFixed(2) || '---'}</span>
-            <span className="text-slate-500 text-[11px]">
-              / {config?.regime_ema_period || portfolio?.regime_ema_period || 20}EMA ${portfolio?.qqq_ema20?.toFixed(2) || '---'}
-            </span>
-            <div className={`flex items-center space-x-1 font-bold text-[11px] px-2 py-0.5 rounded ${
-              isBull ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
-            }`}>
-              {isBull ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              <span>{isBull ? 'BULL (ACTIVE)' : 'BEAR (CASH)'}</span>
-            </div>
-          </div>
+          {(() => {
+            const isBypassed = config?.use_regime_filter === false || portfolio?.use_regime_filter === false;
+            return (
+              <div 
+                title={isBypassed ? "QQQ Regime filter is BYPASSED by user. Trades will execute regardless of market trend." : "QQQ Regime filter is ACTIVE."}
+                className="hidden lg:flex items-center space-x-2.5 px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs"
+              >
+                <Activity className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-400 font-medium">QQQ Regime:</span>
+                <span className="font-semibold text-white">${portfolio?.qqq_price?.toFixed(2) || '---'}</span>
+                <span className="text-slate-500 text-[11px]">
+                  / {config?.regime_ema_period || portfolio?.regime_ema_period || 20}EMA ${portfolio?.qqq_ema20?.toFixed(2) || '---'}
+                </span>
+                {isBypassed ? (
+                  <div className="flex items-center space-x-1 font-bold text-[11px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    {isBull ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    <span>{isBull ? 'BULL (BYPASSED)' : 'BEAR (BYPASSED)'}</span>
+                  </div>
+                ) : (
+                  <div className={`flex items-center space-x-1 font-bold text-[11px] px-2 py-0.5 rounded ${
+                    isBull ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+                  }`}>
+                    {isBull ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    <span>{isBull ? 'BULL (ACTIVE)' : 'BEAR (CASH)'}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Schwab Connection Badge */}
           {schwabStatus && (

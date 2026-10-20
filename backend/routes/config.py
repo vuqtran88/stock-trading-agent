@@ -99,6 +99,7 @@ def get_config(user: str = Depends(get_current_user)):
     top_n = overrides.get("top_n", 2)
     active_strategy = overrides.get("active_strategy", "overnight_drift")
     strategy_enabled = overrides.get("strategy_enabled", True)
+    use_regime_filter = overrides.get("use_regime_filter", True)
     close_routine_time = overrides.get("close_routine_time", "15:50")
     open_routine_time = overrides.get("open_routine_time", "09:28")
 
@@ -112,6 +113,7 @@ def get_config(user: str = Depends(get_current_user)):
         "top_n": top_n,
         "active_strategy": active_strategy,
         "strategy_enabled": strategy_enabled,
+        "use_regime_filter": use_regime_filter,
         "close_routine_time": close_routine_time,
         "open_routine_time": open_routine_time,
         "available_strategies": list_available_strategies(),
@@ -160,6 +162,9 @@ def update_config(req: ConfigUpdateRequest, user: str = Depends(get_current_user
 
     if req.strategy_enabled is not None:
         overrides["strategy_enabled"] = bool(req.strategy_enabled)
+
+    if req.use_regime_filter is not None:
+        overrides["use_regime_filter"] = bool(req.use_regime_filter)
 
     if req.close_routine_time is not None:
         # Validate HH:MM format

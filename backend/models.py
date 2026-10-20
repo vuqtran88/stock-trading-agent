@@ -23,6 +23,7 @@ class ConfigUpdateRequest(BaseModel):
     top_n: Optional[int] = None
     active_strategy: Optional[str] = None  # e.g. "overnight_drift"
     strategy_enabled: Optional[bool] = None  # Automated execution control (True = running, False = paused)
+    use_regime_filter: Optional[bool] = None  # Toggle QQQ regime trend filter (True = enforced, False = bypass)
     close_routine_time: Optional[str] = None  # "HH:MM" e.g. "15:50"
     open_routine_time: Optional[str] = None  # "HH:MM" e.g. "09:28"
 
@@ -55,6 +56,7 @@ class PortfolioResponse(BaseModel):
     qqq_price: float
     qqq_ema20: float
     regime_ema_period: int = 20
+    use_regime_filter: bool = True
 
 
 class BacktestRequest(BaseModel):

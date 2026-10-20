@@ -36,6 +36,7 @@ export default function Universe() {
   // Strategy Execution & Scheduling Controls
   const [activeStrategy, setActiveStrategy] = useState('overnight_drift');
   const [strategyEnabled, setStrategyEnabled] = useState(true);
+  const [useRegimeFilter, setUseRegimeFilter] = useState(true);
   const [closeRoutineTime, setCloseRoutineTime] = useState('15:50');
   const [openRoutineTime, setOpenRoutineTime] = useState('09:28');
   const [availableStrategies, setAvailableStrategies] = useState([]);
@@ -59,6 +60,7 @@ export default function Universe() {
         setMaxHoldings(data.top_n || 2);
         setActiveStrategy(data.active_strategy || 'overnight_drift');
         setStrategyEnabled(data.strategy_enabled ?? true);
+        setUseRegimeFilter(data.use_regime_filter ?? true);
         setCloseRoutineTime(data.close_routine_time || '15:50');
         setOpenRoutineTime(data.open_routine_time || '09:28');
         setAvailableStrategies(data.available_strategies || []);
@@ -109,6 +111,7 @@ export default function Universe() {
           top_n: Number(maxHoldings),
           active_strategy: activeStrategy,
           strategy_enabled: Boolean(strategyEnabled),
+          use_regime_filter: Boolean(useRegimeFilter),
           close_routine_time: closeRoutineTime,
           open_routine_time: openRoutineTime,
         }),
@@ -532,9 +535,51 @@ export default function Universe() {
 
         {/* Market Regime Filter */}
         <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-          <h3 className="text-sm font-semibold text-slate-200">Market Regime Filter</h3>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Market Regime Filter</h3>
+              <p className="text-[11px] text-slate-400">QQQ Trend Filter Guardrail</p>
+            </div>
+            {/* Enable/Disable Toggle */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setUseRegimeFilter(true)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  useRegimeFilter
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ENABLED
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseRegimeFilter(false)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  !useRegimeFilter
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                BYPASSED
+              </button>
+            </div>
+          </div>
 
-          <div>
+          {!useRegimeFilter && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+              <span className="text-sm">⚠️</span>
+              <div>
+                <strong className="font-semibold">Regime Filter is BYPASSED:</strong>
+                <p className="text-[11px] text-amber-200/80 mt-0.5">
+                  Overnight drift buy orders will execute regardless of whether QQQ is above or below its EMA. Use this for testing and pilot execution during bearish regimes.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className={!useRegimeFilter ? 'opacity-50 pointer-events-none' : ''}>
             <div className="flex justify-between text-xs mb-1">
               <span className="text-slate-400">QQQ Trend EMA Period</span>
               <span className="font-mono text-white font-medium">{emaPeriod} Days</span>
@@ -546,6 +591,7 @@ export default function Universe() {
               step="1"
               value={emaPeriod}
               onChange={(e) => setEmaPeriod(e.target.value)}
+              disabled={!useRegimeFilter}
               className="w-full accent-indigo-500 cursor-pointer"
             />
             <p className="text-[11px] text-slate-500 mt-1">
@@ -556,7 +602,7 @@ export default function Universe() {
           <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs space-y-1.5">
             <span className="font-semibold text-slate-300">How Regime Filtering Works:</span>
             <p className="text-slate-400 leading-relaxed text-[11px]">
-              The Overnight Anomaly has positive expected value during bullish market regimes. If QQQ closes below its
+              The Overnight Anomaly historically has positive expected value during bullish market regimes. If QQQ closes below its
               configurable {emaPeriod}-day EMA, buy orders at market close will stand down automatically, avoiding heavy downside market drift.
             </p>
           </div>

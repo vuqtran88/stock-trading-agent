@@ -134,18 +134,23 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
         return None
 
     ema_period = cfg_data.get("regime_ema_period", settings.REGIME_EMA_PERIOD)
+    use_regime_filter = cfg_data.get("use_regime_filter", True)
 
     bench_ema = float(bench_hist["Close"].ewm(span=ema_period, adjust=False).mean().iloc[-1])
     bench_current = float(bench_quote["last_price"])
     is_bullish = bench_current >= bench_ema
-    regime_status = "BULL" if is_bullish else "BEAR"
+    regime_status = "BULL" if is_bullish else ("BYPASS_BEAR" if not use_regime_filter else "BEAR")
 
-    logger.info(f"{bench_sym} Current: ${bench_current:.2f} | {ema_period} EMA: ${bench_ema:.2f} [{regime_status}]")
+    filter_desc = f"{bench_sym} Current: ${bench_current:.2f} | {ema_period} EMA: ${bench_ema:.2f} [{regime_status}]"
+    if not use_regime_filter:
+        filter_desc += " (Filter Bypassed by User)"
+    logger.info(filter_desc)
 
     tickers = cfg_data.get("tickers") or settings.ticker_list
     top_n = max(1, int(cfg_data.get("top_n", 2)))
 
-    if not is_bullish:
+    # If regime filter is enabled and regime is bearish, abort and sit in cash
+    if use_regime_filter and not is_bullish:
         logger.warning(
             f"MARKET REGIME: BEARISH ({bench_sym} ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f}). "
             f"Taking 0 trades today. Account sits 100% in CASH."
@@ -309,7 +314,10 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     # Send Discord notification
     notifier = DiscordNotifier(env=active_env)
-    regime_str = f"QQQ ${bench_current:.2f} >= {ema_period} EMA ${bench_ema:.2f} (BULL)"
+    if is_bullish:
+        regime_str = f"QQQ ${bench_current:.2f} >= {ema_period} EMA ${bench_ema:.2f} (BULL)"
+    else:
+        regime_str = f"QQQ ${bench_current:.2f} < {ema_period} EMA ${bench_ema:.2f} (BEAR - FILTER BYPASSED)"
 
     if executed_order_reports:
         notifier.notify_buy_orders(
@@ -334,7 +342,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
         notifier.notify_routine_status(
             routine_name="🔔 Afternoon Buy Scan Checked",
-            message=f"Market Regime is **BULLISH**, but **0 orders were placed** (insufficient cash or stock price too high). Sitting in **CASH**.",
+            message=f"Market Regime is **{regime_status}**, but **0 orders were placed** (insufficient cash or stock price too high). Sitting in **CASH**.",
             trigger_source=trigger_source,
             env=active_env,
             details=details,
@@ -342,7 +350,7 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     # 7. Generate & Persist Verbose Decision Dossier
     return DecisionDossier.create_close_dossier(
-        regime_status="BULL",
+        regime_status="BULL" if is_bullish else "BYPASS_BEAR",
         qqq_price=bench_current,
         qqq_ema20=bench_ema,
         scanned_tickers=tickers,

@@ -58,7 +58,7 @@ class DecisionDossier:
                 "price": round(qqq_price, 2),
                 "ema20": round(qqq_ema20, 2),
                 "distance_pct": round(((qqq_price - qqq_ema20) / qqq_ema20) * 100.0, 2) if qqq_ema20 > 0 else 0.0,
-                "passed": regime_status.upper() == "BULL",
+                "passed": regime_status.upper() in ("BULL", "BYPASS_BEAR"),
             },
             "earnings_blackout": {
                 "scanned_universe": scanned_tickers,
