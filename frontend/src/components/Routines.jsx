@@ -318,9 +318,18 @@ export default function Routines({
                 <Sunset className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="font-semibold text-xs text-white">Afternoon Buy Routine ({closeTimeDisplay} ET)</h4>
+                <div className="flex items-center gap-1.5">
+                  <h4 className="font-semibold text-xs text-white">Afternoon Buy Routine ({closeTimeDisplay} ET)</h4>
+                  {config?.use_regime_filter === false && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      ⚠️ Filter Bypassed
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-slate-400">
-                  {isLive ? 'Places live real-money market orders' : 'Scan QQQ regime & paper enter top dips'}
+                  {config?.use_regime_filter === false
+                    ? 'Regime filter bypassed: Will execute buys regardless of QQQ trend'
+                    : isLive ? 'Places live real-money market orders' : 'Scan QQQ regime & paper enter top dips'}
                 </p>
               </div>
             </div>
@@ -337,7 +346,10 @@ export default function Routines({
             ) : (
               <Play className="w-3.5 h-3.5" />
             )}
-            <span>{isLive ? 'Execute LIVE Afternoon Buy Routine' : 'Run Afternoon Buy Scan'}</span>
+            <span>
+              {isLive ? 'Execute LIVE Afternoon Buy Routine' : 'Run Afternoon Buy Scan'}
+              {config?.use_regime_filter === false ? ' (⚠️ Filter Bypassed)' : ''}
+            </span>
           </button>
         </div>
 

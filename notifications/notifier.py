@@ -105,10 +105,18 @@ class DiscordNotifier:
                 "inline": False,
             })
 
+        is_bypassed = "BYPASS" in regime_info.upper()
+        embed_color = 16753920 if is_bypassed else 3066993  # Amber (16753920) if bypassed, Green (3066993) if standard
+        bypass_badge = " ⚠️ [REGIME FILTER BYPASSED]" if is_bypassed else ""
+
+        description = f"**Triggered By:** {source_badge}\n**Market Regime:** {regime_info}\n**Total Deployed:** ${total_cost:,.2f}"
+        if is_bypassed:
+            description = f"⚠️ **NOTICE: Market Regime Filter is BYPASSED by User.**\n" + description
+
         embed = {
-            "title": f"🔔 Market Close Buy Routine Executed [{env.upper()}]",
-            "description": f"**Triggered By:** {source_badge}\n**Market Regime:** {regime_info}\n**Total Deployed:** ${total_cost:,.2f}",
-            "color": 3066993,  # Green
+            "title": f"🔔 Market Close Buy Routine Executed [{env.upper()}]{bypass_badge}",
+            "description": description,
+            "color": embed_color,
             "fields": fields,
             "footer": {"text": f"Stock Trading Agent • Buy-at-Close • {source_badge}"},
         }
