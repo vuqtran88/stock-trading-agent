@@ -170,14 +170,24 @@ def trigger_close_routine(user: str = Depends(get_current_user)):
     source = "SCHEDULED" if user == "cron-scheduler" else "MANUAL"
     try:
         dossier = run_close_routine(trigger_source=source)
-        regime = dossier.get("market_regime", {}).get("status", "BULL") if dossier else "BULL"
-        orders_count = len(dossier.get("executed_orders", [])) if dossier else 0
+        regime = dossier.get("regime", {}).get("status", "BULL") if dossier else "BULL"
+        orders = dossier.get("execution", {}).get("executed_orders", []) if dossier else []
+        orders_count = len(orders)
+        
+        if orders_count > 0:
+            order_summary = ", ".join(f"{o.get('shares')} {o.get('ticker')}" for o in orders)
+            activity_msg = f"Afternoon Close Routine ({regime}): {orders_count} buy order(s) placed ({order_summary})."
+            event_type = "success"
+        else:
+            activity_msg = f"Afternoon Close Routine ({regime}): 0 buy order(s) placed (Account 100% Cash)."
+            event_type = "info"
+
         record_server_activity(
-            f"Afternoon Close Routine ({regime}): {orders_count} buy order(s) placed.",
-            event_type="success" if orders_count > 0 or regime == "BEAR" else "info",
+            activity_msg,
+            event_type=event_type,
             source=source,
         )
-        return {"success": True, "message": "Close routine executed successfully.", "dossier": dossier}
+        return {"success": True, "message": activity_msg, "dossier": dossier}
     except Exception as e:
         record_server_activity(f"Afternoon Close Routine Failed: {e}", event_type="error", source=source)
         raise HTTPException(status_code=500, detail=f"Error executing close routine: {e}")
