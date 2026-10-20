@@ -222,7 +222,22 @@ stock-trading-agent/
   3. Create a single-command renewal script (`scripts/schwab_refresh_and_sync.py`) that performs local OAuth authentication and automatically pushes the new token to GCP Secret Manager (`schwab-token-data`) in one step.
   4. (Optional) Provide in-app 1-click renewal flow via web dashboard OAuth redirect callback endpoint (`/api/auth/schwab/callback`).
 
-### Backlog Item 2: Schwab Live Connection & Balance Status Badge in Frontend
-- **Active Task**: Real-time Schwab health badge in the UI (Navbar / Settings tab) displaying live connection status, settled cash balance, and account hash without requiring backend log inspection.
+### Backlog Item 2: Schwab Live Connection & Balance Status Badge in Frontend (Completed)
+- **Status**: ✅ Completed & Deployed.
+- **Details**: Real-time Schwab health badge in Navbar and Universe/Settings tab displaying connection status, settled cash balance ($150.09), account hash, and refreshable token status.
+
+### Backlog Item 3: Cash Flow / Capital Transfer Ledger & True P&L Tracking
+- **Description**: Robust tracking of deposits, withdrawals, and cash transfers to eliminate P&L distortions from external bank funding.
+- **Key Tasks**:
+  1. **Ledger Schema**: Record external cash flow events (`timestamp`, `type`: `DEPOSIT`/`WITHDRAWAL`, `amount`, `notes`).
+  2. **Net Invested Capital**: Compute cumulative net external capital: $\text{Initial Balance} + \sum \text{Deposits} - \sum \text{Withdrawals}$.
+  3. **True Net Strategy Gain**: Real-time dollar metric: $\text{Current Equity} - \text{Net Contributed Capital}$.
+  4. **Time-Weighted Return (TWR) / Unit Share Pricing**: Calculate percentage return normalized for external cash flow timing so deposits/withdrawals do not distort ROI.
+  5. **UI Widget**: Add "+ Record Deposit / Withdrawal" modal and cash-flow breakdown in Portfolio tab.
+
+### Backlog Item 4: Persistent Cloud Strategy Configuration
+- **Status**: ✅ In Progress / Active.
+- **Details**: Synchronize dashboard strategy configurations (active/paused status, universe, position sizes, routine times, EMA period) to GCP Secret Manager (`strategy-runtime-config`) so settings survive Cloud Run cold starts, instance scale-to-zero, and new container deployments.
+
 
 

@@ -2,35 +2,88 @@
 
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
+import logging
 from config.settings import settings
 from backend.models import ConfigUpdateRequest
 from backend.routes.auth import get_current_user
 from strategies.registry import list_available_strategies, AVAILABLE_STRATEGIES
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 OVERRIDE_FILE = settings.DATA_DIR / "config_override.json"
+GCP_CONFIG_SECRET_NAME = "projects/stock-trading-agent-249477/secrets/strategy-runtime-config"
+
+
+def _fetch_from_secret_manager() -> Optional[Dict]:
+    """Fetch persistent configuration from GCP Secret Manager."""
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"{GCP_CONFIG_SECRET_NAME}/versions/latest"
+        resp = client.access_secret_version(name=name)
+        payload = resp.payload.data.decode("utf-8")
+        if payload:
+            data = json.loads(payload)
+            logger.info("Loaded persistent configuration from GCP Secret Manager.")
+            return data
+    except Exception as e:
+        logger.debug(f"Secret Manager config access skipped or failed: {e}")
+    return None
+
+
+def _sync_to_secret_manager(overrides: Dict):
+    """Sync persistent configuration to GCP Secret Manager."""
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        payload_bytes = json.dumps(overrides, indent=2).encode("utf-8")
+        client.add_secret_version(
+            parent=GCP_CONFIG_SECRET_NAME,
+            payload={"data": payload_bytes},
+        )
+        logger.info("Persisted updated configuration to GCP Secret Manager.")
+    except Exception as e:
+        logger.warning(f"Could not persist config to Secret Manager: {e}")
 
 
 def get_active_overrides() -> Dict:
-    """Load user overrides saved from web dashboard."""
+    """Load user overrides saved from web dashboard (from local file or Secret Manager)."""
+    # 1. Try local disk cache
     if OVERRIDE_FILE.exists():
         try:
             with open(OVERRIDE_FILE, "r") as f:
                 return json.load(f)
         except Exception:
             pass
+
+    # 2. Fallback to GCP Secret Manager (across container cold starts / redeployments)
+    remote_cfg = _fetch_from_secret_manager()
+    if remote_cfg:
+        # Cache locally to container
+        try:
+            OVERRIDE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(OVERRIDE_FILE, "w") as f:
+                json.dump(remote_cfg, f, indent=2)
+        except Exception:
+            pass
+        return remote_cfg
+
     return {}
 
 
 def save_active_overrides(overrides: Dict):
-    """Persist user overrides to disk."""
+    """Persist user overrides to both local disk and GCP Secret Manager."""
     OVERRIDE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OVERRIDE_FILE, "w") as f:
         json.dump(overrides, f, indent=2)
+
+    # Persist to GCP Secret Manager so redeployments never wipe settings
+    _sync_to_secret_manager(overrides)
 
 
 @router.get("")
