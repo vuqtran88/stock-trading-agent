@@ -44,6 +44,14 @@ class PositionItem(BaseModel):
     unrealized_pnl_pct: float
 
 
+class CashFlowItem(BaseModel):
+    id: str
+    date: str
+    type: str  # "INITIAL_DEPOSIT", "DEPOSIT", "WITHDRAWAL"
+    amount: float
+    description: str
+
+
 class PortfolioResponse(BaseModel):
     env: str
     cash: float
@@ -57,6 +65,11 @@ class PortfolioResponse(BaseModel):
     qqq_ema20: float
     regime_ema_period: int = 20
     use_regime_filter: bool = True
+    net_contributed_capital: float = 0.0
+    true_strategy_pnl: float = 0.0
+    true_strategy_pnl_pct: float = 0.0
+    twr_pct: float = 0.0
+    cash_flows: List[CashFlowItem] = []
 
 
 class BacktestRequest(BaseModel):

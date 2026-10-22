@@ -19,3 +19,9 @@ def isolate_test_environment(monkeypatch, tmp_path):
     # Point test override file to temporary directory
     test_override_file = tmp_path / "config_override.json"
     monkeypatch.setattr(config_module, "OVERRIDE_FILE", test_override_file)
+
+    # Mock capital ledger secret manager operations
+    import data.capital_ledger as cap_module
+    monkeypatch.setattr(cap_module, "_sync_capital_ledger_to_secret", lambda ledger: None)
+    monkeypatch.setattr(cap_module, "_fetch_capital_ledger_from_secret", lambda: None)
+    monkeypatch.setattr(cap_module, "LEDGER_FILE", tmp_path / "capital_ledger.json")

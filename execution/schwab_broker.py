@@ -5,7 +5,7 @@ and market order execution.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 import requests
 
@@ -128,6 +128,34 @@ class SchwabBroker(BaseBroker):
                 )
 
         return result
+
+    def get_transactions(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict]:
+        """Fetch transactions from Schwab account to detect bank deposits/withdrawals and trade executions."""
+        if not self.account_hash:
+            raise RuntimeError("SCHWAB_ACCOUNT_HASH is not set.")
+
+        now = datetime.now(timezone.utc) if "timezone" in globals() else datetime.utcnow()
+        end = end_date or now
+        start = start_date or (end - timedelta(days=90))
+
+        start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+        url = f"{SCHWAB_API_BASE}/accounts/{self.account_hash}/transactions?startDate={start_str}&endDate={end_str}"
+        try:
+            resp = requests.get(url, headers=self._get_headers(), timeout=10)
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                logger.warning(f"Schwab get_transactions returned status {resp.status_code}: {resp.text}")
+                return []
+        except Exception as e:
+            logger.warning(f"Error fetching Schwab transactions: {e}")
+            return []
 
     def _place_order(self, ticker: str, shares: int, instruction: str) -> ExecutionReport:
         """Construct and send order payload to Schwab."""

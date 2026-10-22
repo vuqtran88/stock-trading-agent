@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from config.settings import settings
 from data.fetcher import MarketDataFetcher
+from data.capital_ledger import CapitalLedgerManager
 from risk.risk_manager import RiskManager
 from execution.paper_broker import PaperBroker
 from execution.schwab_broker import SchwabBroker
@@ -119,11 +120,25 @@ def get_portfolio(user: str = Depends(get_current_user)):
 
     use_regime_filter = overrides.get("use_regime_filter", True)
 
+    # 4. Ingest Cash Flows & Compute True Strategy P&L
+    total_equity = cash + total_market_val
+    ledger_mgr = CapitalLedgerManager(env=env)
+
+    if env == "live" and isinstance(broker, SchwabBroker):
+        try:
+            txs = broker.get_transactions()
+            if txs:
+                ledger_mgr.sync_schwab_transactions(txs, current_equity=total_equity)
+        except Exception as e:
+            print(f"Error syncing Schwab transactions: {e}")
+
+    cap_metrics = ledger_mgr.get_metrics(current_total_equity=total_equity)
+
     return PortfolioResponse(
         env=env,
         cash=cash,
         total_market_value=total_market_val,
-        total_portfolio_value=cash + total_market_val,
+        total_portfolio_value=total_equity,
         total_exposure=exposure,
         positions=position_items,
         kill_switch_active=risk_mgr.is_kill_switch_active(),
@@ -132,6 +147,11 @@ def get_portfolio(user: str = Depends(get_current_user)):
         qqq_ema20=qqq_ema,
         regime_ema_period=ema_period,
         use_regime_filter=use_regime_filter,
+        net_contributed_capital=cap_metrics["net_contributed_capital"],
+        true_strategy_pnl=cap_metrics["true_strategy_pnl"],
+        true_strategy_pnl_pct=cap_metrics["true_strategy_pnl_pct"],
+        twr_pct=cap_metrics["twr_pct"],
+        cash_flows=cap_metrics["cash_flows"],
     )
 
 
