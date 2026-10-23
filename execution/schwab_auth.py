@@ -340,7 +340,7 @@ class SchwabAuth:
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
-    def exchange_code_for_tokens(self, auth_code_or_url: str) -> Dict:
+    def exchange_code_for_tokens(self, auth_code_or_url: str, redirect_uri: Optional[str] = None) -> Dict:
         """Exchange an authorization code or full redirect URL for tokens."""
         code = auth_code_or_url.strip()
         if "code=" in code:
@@ -352,11 +352,12 @@ class SchwabAuth:
         # Decode URL encoding if needed (e.g. %40 -> @)
         code = urllib.parse.unquote(code)
 
+        cb_url = redirect_uri or self.callback_url
         headers = self._get_basic_auth_header()
         payload = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": self.callback_url,
+            "redirect_uri": cb_url,
         }
 
         resp = requests.post(SCHWAB_TOKEN_URL, headers=headers, data=payload, timeout=15)

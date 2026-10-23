@@ -258,27 +258,45 @@ export default function Universe() {
               <div className="flex flex-wrap items-center gap-3">
                 {/* 7-Day Expiry Clock & Badge */}
                 {schwabData.token_status?.has_token && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
-                    schwabData.token_status.status === 'CRITICAL'
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
-                      : schwabData.token_status.status === 'WARNING'
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                      : 'bg-slate-950/80 text-slate-300 border-slate-800'
-                  }`}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/auth/schwab/login');
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.auth_url) window.open(data.auth_url, '_blank', 'width=750,height=800');
+                        }
+                      } catch (e) {
+                        alert('Error initiating login: ' + e.message);
+                      }
+                    }}
+                    title="Click to Renew Charles Schwab Token in 1-Click"
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all cursor-pointer hover:brightness-110 active:scale-95 text-left ${
+                      schwabData.token_status.status === 'CRITICAL'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
+                        : schwabData.token_status.status === 'WARNING'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                        : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
                     {schwabData.token_status.is_near_expiry ? (
                       <AlertTriangle className={`w-4 h-4 shrink-0 ${schwabData.token_status.status === 'CRITICAL' ? 'text-rose-400' : 'text-amber-400'}`} />
                     ) : (
                       <Clock className="w-4 h-4 text-teal-400 shrink-0" />
                     )}
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-wider">
-                        Refresh Token Clock
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-wider">
+                          Refresh Token Clock
+                        </span>
+                        <span className="text-[8px] bg-teal-500/20 text-teal-300 px-1 rounded font-mono">1-CLICK</span>
+                      </div>
                       <span className="font-mono font-bold text-xs">
                         {schwabData.token_status.days_remaining}d left ({schwabData.token_status.hours_remaining}h)
                       </span>
                     </div>
-                  </div>
+                  </button>
                 )}
 
                 <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 px-3.5 py-1.5 rounded-xl">

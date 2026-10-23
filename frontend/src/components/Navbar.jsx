@@ -28,6 +28,22 @@ export default function Navbar({
   const env = config?.env || portfolio?.env || 'paper';
   const isLive = env === 'live';
 
+  const handleSchwabWebLogin = async () => {
+    try {
+      const res = await fetch('/api/auth/schwab/login');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.auth_url) {
+          window.open(data.auth_url, '_blank', 'width=750,height=800');
+        }
+      } else {
+        alert('Could not initiate Schwab OAuth login. Please ensure SCHWAB_APP_KEY is configured.');
+      }
+    } catch (err) {
+      alert('Error initiating Schwab login: ' + err.message);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 glass-panel border-b border-slate-800/80 px-6 py-3.5 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -132,16 +148,18 @@ export default function Navbar({
                 </div>
               </div>
 
-              {/* 7-Day OAuth Refresh Token Clock & Expiry Badge */}
-              {schwabStatus.token_status?.has_token && (
-                <div 
-                  title={`Charles Schwab OAuth2 Refresh Token Expiry Clock:\n${schwabStatus.token_status.message}\nRun 'python3 scripts/schwab_login.py --force' to renew.`}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
+              {/* 7-Day OAuth Refresh Token Clock & 1-Click Renew Button */}
+              {schwabStatus.token_status?.has_token ? (
+                <button 
+                  type="button"
+                  onClick={handleSchwabWebLogin}
+                  title={`Charles Schwab OAuth2 Refresh Token Expiry Clock:\n${schwabStatus.token_status.message}\n👉 Click to Renew in 1-Click directly in your browser.`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all cursor-pointer hover:brightness-110 active:scale-95 ${
                     schwabStatus.token_status.status === 'CRITICAL'
                       ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/30 animate-pulse'
                       : schwabStatus.token_status.status === 'WARNING'
                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/30'
-                      : 'bg-slate-900/60 text-slate-300 border-slate-800'
+                      : 'bg-slate-900/60 text-slate-300 border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   {schwabStatus.token_status.is_near_expiry ? (
@@ -149,15 +167,17 @@ export default function Navbar({
                   ) : (
                     <Clock className="w-3.5 h-3.5 text-teal-400 shrink-0" />
                   )}
-                  <div className="flex flex-col leading-tight">
+                  <div className="flex flex-col leading-tight text-left">
                     <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
                       Token Clock
-                      {schwabStatus.token_status.is_near_expiry && (
+                      {schwabStatus.token_status.is_near_expiry ? (
                         <span className={`px-1 py-0.2 rounded text-[8px] font-bold ${
                           schwabStatus.token_status.status === 'CRITICAL' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'
                         }`}>
                           RENEW
                         </span>
+                      ) : (
+                        <span className="text-[8px] text-teal-400/80 font-mono">1-CLICK</span>
                       )}
                     </span>
                     <span className="font-mono text-[11px] font-bold">
@@ -166,7 +186,15 @@ export default function Navbar({
                         : `${schwabStatus.token_status.hours_remaining}h left`}
                     </span>
                   </div>
-                </div>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSchwabWebLogin}
+                  className="px-2.5 py-1.5 rounded-lg border border-teal-500/40 bg-teal-500/15 text-teal-300 text-xs font-semibold hover:bg-teal-500/25 transition cursor-pointer"
+                >
+                  Connect Schwab
+                </button>
               )}
             </div>
           )}

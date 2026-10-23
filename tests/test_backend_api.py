@@ -91,3 +91,32 @@ def test_login_and_authenticated_flow(monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+def test_schwab_web_oauth_endpoints(monkeypatch):
+    from unittest.mock import MagicMock
+    from execution.schwab_auth import SchwabAuth
+
+    # 1. Test /api/auth/schwab/login
+    resp = client.get("/api/auth/schwab/login")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "auth_url" in data
+    assert "api.schwabapi.com" in data["auth_url"]
+    assert "callback_url" in data
+
+    # 2. Test /api/auth/schwab/callback missing code
+    resp_err = client.get("/api/auth/schwab/callback")
+    assert resp_err.status_code == 400
+    assert "Authentication Failed" in resp_err.text
+
+    # 3. Test /api/auth/schwab/callback successful code exchange
+    monkeypatch.setattr(
+        SchwabAuth,
+        "exchange_code_for_tokens",
+        lambda self, code, redirect_uri=None: {"access_token": "TEST_ACC", "refresh_token": "TEST_REF"},
+    )
+    resp_ok = client.get("/api/auth/schwab/callback?code=MOCK_CODE")
+    assert resp_ok.status_code == 200
+    assert "Charles Schwab Connected!" in resp_ok.text
+

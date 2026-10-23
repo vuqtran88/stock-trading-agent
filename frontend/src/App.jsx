@@ -334,14 +334,32 @@ export default function App() {
                 </div>
                 <p className="text-xs opacity-90 mt-0.5">
                   Your Charles Schwab refresh token expires within {schwabStatus.token_status.days_remaining} days. 
-                  Run <code className="bg-slate-950/80 px-1.5 py-0.5 rounded text-white font-mono text-[11px]">python3 scripts/schwab_login.py --force</code> in your terminal to renew with 1 click.
+                  Click below to renew in 1-Click directly in your browser, or run <code className="bg-slate-950/80 px-1.5 py-0.5 rounded text-white font-mono text-[11px]">python3 scripts/schwab_login.py --force</code>.
                 </p>
               </div>
             </div>
-            <div className="hidden md:flex items-center gap-2">
-              <span className="text-[11px] font-mono bg-slate-950/70 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl">
-                Zero-Copy Auto Sync
-              </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/auth/schwab/login');
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.auth_url) window.open(data.auth_url, '_blank', 'width=750,height=800');
+                    }
+                  } catch (e) {
+                    alert('Error initiating login: ' + e.message);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer ${
+                  schwabStatus.token_status.status === 'CRITICAL'
+                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
+                }`}
+              >
+                Renew Token Now
+              </button>
             </div>
           </div>
         )}
