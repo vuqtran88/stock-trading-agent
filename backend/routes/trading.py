@@ -458,9 +458,10 @@ def get_schwab_status(user: str = Depends(get_current_user)):
             for sym, pos in positions.items()
         ]
         
-        # Token details if available
+        # Token details and lifespan status
         auth_tokens = schwab.auth.tokens or {}
         has_refresh_token = bool(auth_tokens.get("refresh_token"))
+        token_status = schwab.auth.get_refresh_token_status()
         
         return {
             "connected": True,
@@ -471,6 +472,7 @@ def get_schwab_status(user: str = Depends(get_current_user)):
             "positions": pos_summary,
             "has_refresh_token": has_refresh_token,
             "token_source": "Secret Manager / Disk Cache",
+            "token_status": token_status,
         }
     except Exception as e:
         return {

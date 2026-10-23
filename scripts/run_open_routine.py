@@ -59,6 +59,24 @@ def run_open_routine(broker_override=None, fetcher_override=None, audit_dir_over
 
     starting_cash = float(broker.get_cash_balance())
 
+    # Proactive Schwab Refresh Token Expiration Check (alerts Discord if <= 48 hours remaining)
+    if active_env == "live" or (broker and broker.__class__.__name__ == "SchwabBroker"):
+        try:
+            from execution.schwab_auth import SchwabAuth
+            auth = getattr(broker, "auth", None) or SchwabAuth()
+            tok_status = auth.get_refresh_token_status()
+            if tok_status.get("is_near_expiry"):
+                logger.warning(f"Schwab token near expiration: {tok_status.get('hours_remaining')}h remaining.")
+                notifier = DiscordNotifier(env=active_env)
+                notifier.notify_token_expiry_warning(
+                    status=tok_status.get("status", "WARNING"),
+                    hours_remaining=tok_status.get("hours_remaining", 0.0),
+                    days_remaining=tok_status.get("days_remaining", 0.0),
+                    env=active_env,
+                )
+        except Exception as e:
+            logger.debug(f"Token lifespan check non-critical failure: {e}")
+
     # 1. Query Open Overnight Positions
     positions = broker.get_positions()
     if not positions:

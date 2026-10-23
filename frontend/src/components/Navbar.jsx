@@ -9,7 +9,9 @@ import {
   Zap,
   Lock,
   Radio,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -97,36 +99,75 @@ export default function Navbar({
             );
           })()}
 
-          {/* Schwab Connection Badge */}
+          {/* Schwab Connection Badge & Expiration Clock */}
           {schwabStatus && (
-            <div 
-              title={
-                schwabStatus.connected
-                  ? `Schwab Live API Connected\nAccount: ${schwabStatus.account_hash_short || 'Active'}\nSettled Cash: $${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nActive Positions: ${schwabStatus.positions_count || 0}`
-                  : `Schwab Disconnected: ${schwabStatus.error || 'Token expired or invalid credentials'}`
-              }
-              className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs transition-all ${
-                schwabStatus.connected
-                  ? 'bg-slate-900/80 border-sky-500/30 text-slate-200'
-                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${
-                schwabStatus.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-pulse' : 'bg-rose-500'
-              }`} />
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5 leading-none">
-                  <span className="font-bold text-[11px] text-sky-400">SCHWAB</span>
-                  <span className={`text-[10px] font-semibold ${schwabStatus.connected ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {schwabStatus.connected ? 'LIVE' : 'OFFLINE'}
-                  </span>
+            <div className="hidden sm:flex items-center space-x-2">
+              <div 
+                title={
+                  schwabStatus.connected
+                    ? `Schwab Live API Connected\nAccount: ${schwabStatus.account_hash_short || 'Active'}\nSettled Cash: $${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nActive Positions: ${schwabStatus.positions_count || 0}`
+                    : `Schwab Disconnected: ${schwabStatus.error || 'Token expired or invalid credentials'}`
+                }
+                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                  schwabStatus.connected
+                    ? 'bg-slate-900/80 border-sky-500/30 text-slate-200'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${
+                  schwabStatus.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-pulse' : 'bg-rose-500'
+                }`} />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5 leading-none">
+                    <span className="font-bold text-[11px] text-sky-400">SCHWAB</span>
+                    <span className={`text-[10px] font-semibold ${schwabStatus.connected ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {schwabStatus.connected ? 'LIVE' : 'OFFLINE'}
+                    </span>
+                  </div>
+                  {schwabStatus.connected && (
+                    <span className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      ${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
                 </div>
-                {schwabStatus.connected && (
-                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">
-                    ${Number(schwabStatus.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                )}
               </div>
+
+              {/* 7-Day OAuth Refresh Token Clock & Expiry Badge */}
+              {schwabStatus.token_status?.has_token && (
+                <div 
+                  title={`Charles Schwab OAuth2 Refresh Token Expiry Clock:\n${schwabStatus.token_status.message}\nRun 'python3 scripts/schwab_login.py --force' to renew.`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
+                    schwabStatus.token_status.status === 'CRITICAL'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/30 animate-pulse'
+                      : schwabStatus.token_status.status === 'WARNING'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/30'
+                      : 'bg-slate-900/60 text-slate-300 border-slate-800'
+                  }`}
+                >
+                  {schwabStatus.token_status.is_near_expiry ? (
+                    <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${schwabStatus.token_status.status === 'CRITICAL' ? 'text-rose-400' : 'text-amber-400'}`} />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                  )}
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+                      Token Clock
+                      {schwabStatus.token_status.is_near_expiry && (
+                        <span className={`px-1 py-0.2 rounded text-[8px] font-bold ${
+                          schwabStatus.token_status.status === 'CRITICAL' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'
+                        }`}>
+                          RENEW
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-[11px] font-bold">
+                      {schwabStatus.token_status.days_remaining > 1
+                        ? `${schwabStatus.token_status.days_remaining}d left`
+                        : `${schwabStatus.token_status.hours_remaining}h left`}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

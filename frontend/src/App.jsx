@@ -13,6 +13,8 @@ import {
   Sliders,
   History as HistoryIcon,
   ShieldAlert,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 
 export default function App() {
@@ -305,6 +307,42 @@ export default function App() {
             >
               Reset Safety Lock
             </button>
+          </div>
+        )}
+
+        {/* Proactive Schwab Refresh Token Expiration Alert Banner */}
+        {schwabStatus?.token_status?.is_near_expiry && (
+          <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-xl transition-all ${
+            schwabStatus.token_status.status === 'CRITICAL'
+              ? 'bg-rose-500/15 border-rose-500/50 text-rose-200'
+              : 'bg-amber-500/15 border-amber-500/50 text-amber-200'
+          }`}>
+            <div className="flex items-center gap-3.5">
+              <div className={`p-2 rounded-xl shrink-0 ${
+                schwabStatus.token_status.status === 'CRITICAL' ? 'bg-rose-600/30 text-rose-400' : 'bg-amber-600/30 text-amber-400'
+              }`}>
+                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm tracking-tight">
+                    SCHWAB OAUTH TOKEN EXPIRING SOON
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-950/80 border border-current">
+                    ⏳ {schwabStatus.token_status.hours_remaining} HOURS LEFT
+                  </span>
+                </div>
+                <p className="text-xs opacity-90 mt-0.5">
+                  Your Charles Schwab refresh token expires within {schwabStatus.token_status.days_remaining} days. 
+                  Run <code className="bg-slate-950/80 px-1.5 py-0.5 rounded text-white font-mono text-[11px]">python3 scripts/schwab_login.py --force</code> in your terminal to renew with 1 click.
+                </p>
+              </div>
+            </div>
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-[11px] font-mono bg-slate-950/70 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl">
+                Zero-Copy Auto Sync
+              </span>
+            </div>
           </div>
         )}
 

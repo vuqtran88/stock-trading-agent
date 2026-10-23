@@ -168,3 +168,29 @@ class DiscordNotifier:
             "footer": {"text": "Stock Trading Agent • Emergency Halt"},
         }
         self.send_message(content="@everyone 🚨 **Emergency Halt Triggered!**", embed=embed)
+
+    def notify_token_expiry_warning(self, status: str, hours_remaining: float, days_remaining: float, env: str = "live"):
+        """Notify Discord when the Charles Schwab OAuth refresh token is nearing its 7-day expiration."""
+        is_critical = hours_remaining <= 24
+        color = 15158332 if is_critical else 16753920  # Red or Orange
+        title = "🚨 ACTION REQUIRED: Schwab Token Expires in < 24 Hours!" if is_critical else "⚠️ REMINDER: Schwab Refresh Token Near Expiration"
+
+        embed = {
+            "title": title,
+            "description": (
+                f"Your Charles Schwab OAuth refresh token has **{hours_remaining:.0f} hours** ({days_remaining:.1f} days) remaining before expiration.\n\n"
+                f"**Renewal Command (Zero-Copy):**\n"
+                f"```bash\npython3 scripts/schwab_login.py --force\n```\n"
+                f"Simply log in and approve — the token will be captured and synced to GCP Secret Manager automatically."
+            ),
+            "color": color,
+            "fields": [
+                {"name": "Remaining Time", "value": f"⏳ {hours_remaining:.0f} hours ({days_remaining:.1f}d)", "inline": True},
+                {"name": "Status Level", "value": f"**{status}**", "inline": True},
+                {"name": "Environment", "value": f"`{env.upper()}`", "inline": True},
+            ],
+            "footer": {"text": "Stock Trading Agent • Schwab OAuth2 Monitor"},
+        }
+        mention = "@everyone " if is_critical else ""
+        url = self._get_webhook_for_env(env)
+        self.send_message(content=f"{mention}{title}", embed=embed, webhook_url=url)

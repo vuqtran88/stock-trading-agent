@@ -11,6 +11,7 @@ import {
   Clock,
   Layers,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 const POPULAR_TICKERS = [
@@ -254,19 +255,46 @@ export default function Universe() {
             </div>
 
             {schwabData.connected && (
-              <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 px-3.5 py-2 rounded-xl">
-                <div>
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Settled Cash</span>
-                  <span className="text-sm font-bold font-mono text-emerald-400">
-                    ${Number(schwabData.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="w-[1px] h-6 bg-slate-800" />
-                <div>
-                  <span className="text-[10px] text-slate-500 block uppercase font-medium">Open Positions</span>
-                  <span className="text-sm font-bold font-mono text-white">
-                    {schwabData.positions_count || 0}
-                  </span>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* 7-Day Expiry Clock & Badge */}
+                {schwabData.token_status?.has_token && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
+                    schwabData.token_status.status === 'CRITICAL'
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
+                      : schwabData.token_status.status === 'WARNING'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                      : 'bg-slate-950/80 text-slate-300 border-slate-800'
+                  }`}>
+                    {schwabData.token_status.is_near_expiry ? (
+                      <AlertTriangle className={`w-4 h-4 shrink-0 ${schwabData.token_status.status === 'CRITICAL' ? 'text-rose-400' : 'text-amber-400'}`} />
+                    ) : (
+                      <Clock className="w-4 h-4 text-teal-400 shrink-0" />
+                    )}
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-wider">
+                        Refresh Token Clock
+                      </span>
+                      <span className="font-mono font-bold text-xs">
+                        {schwabData.token_status.days_remaining}d left ({schwabData.token_status.hours_remaining}h)
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 px-3.5 py-1.5 rounded-xl">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Settled Cash</span>
+                    <span className="text-sm font-bold font-mono text-emerald-400">
+                      ${Number(schwabData.settled_cash || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-[1px] h-6 bg-slate-800" />
+                  <div>
+                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Open Positions</span>
+                    <span className="text-sm font-bold font-mono text-white">
+                      {schwabData.positions_count || 0}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}

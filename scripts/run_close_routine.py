@@ -68,6 +68,24 @@ def run_close_routine(broker_override=None, fetcher_override=None, earnings_filt
 
     starting_cash = float(broker.get_cash_balance())
 
+    # Proactive Schwab Refresh Token Expiration Check (alerts Discord if <= 48 hours remaining)
+    if active_env == "live" or isinstance(broker, SchwabBroker):
+        try:
+            from execution.schwab_auth import SchwabAuth
+            auth = getattr(broker, "auth", None) or SchwabAuth()
+            tok_status = auth.get_refresh_token_status()
+            if tok_status.get("is_near_expiry"):
+                logger.warning(f"Schwab token near expiration: {tok_status.get('hours_remaining')}h remaining.")
+                notifier = DiscordNotifier(env=active_env)
+                notifier.notify_token_expiry_warning(
+                    status=tok_status.get("status", "WARNING"),
+                    hours_remaining=tok_status.get("hours_remaining", 0.0),
+                    days_remaining=tok_status.get("days_remaining", 0.0),
+                    env=active_env,
+                )
+        except Exception as e:
+            logger.debug(f"Token lifespan check non-critical failure: {e}")
+
     if cfg_data.get("strategy_enabled") is False and not broker_override:
         logger.warning("Automated execution is currently PAUSED by user in config settings. Halting routine.")
         notifier = DiscordNotifier(env=active_env)

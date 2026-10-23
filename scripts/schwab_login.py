@@ -20,8 +20,13 @@ def main():
 
     auth = SchwabAuth()
     
-    # 1. Check if we already have valid or refreshable tokens
-    if auth.tokens and "refresh_token" in auth.tokens:
+    import argparse
+    parser = argparse.ArgumentParser(description="Authenticate or renew Charles Schwab OAuth2 tokens.")
+    parser.add_argument("--force", action="store_true", help="Force new login even if current token appears active")
+    args = parser.parse_args()
+
+    # 1. Check if we already have valid or refreshable tokens (unless --force is passed)
+    if not args.force and auth.tokens and "refresh_token" in auth.tokens:
         try:
             print("\nFound existing Schwab token in data_cache/schwab_token.json.")
             print("Verifying connection and testing token refresh...")
@@ -37,38 +42,23 @@ def main():
             print(f"Schwab Account Hash: {broker.account_hash}")
             print(f"Settled Cash Balance: ${cash:,.2f}")
             print("No login needed. Your bot is already authorized to trade.")
+            print("(Pass --force if you want to request a brand new refresh token.)")
             print("=" * 70 + "\n")
             return
         except Exception as e:
             print(f"Existing token could not be refreshed ({e}). Proceeding to re-authenticate...\n")
 
     try:
-        import webbrowser
-        import urllib.parse
+        # Run login flow with automatic browser URL / clipboard detection and auto-sync
+        token_data = auth.login_interactive()
 
-        auth_url = (
-            f"https://api.schwabapi.com/v1/oauth/authorize?client_id={auth.app_key}"
-            f"&redirect_uri={urllib.parse.quote(auth.callback_url)}"
-        )
         print("\n" + "=" * 70)
-        print("CHARLES SCHWAB OAUTH2 AUTHORIZATION")
+        print("✅ SUCCESS! Schwab Tokens acquired and updated.")
         print("=" * 70)
-        print("1. Opening your browser to log into Charles Schwab...")
-        print(f"URL: {auth_url}\n")
-        webbrowser.open(auth_url)
+        print("• Saved to local cache: data_cache/schwab_token.json")
+        print("• Automatically synchronized to GCP Secret Manager (schwab-token-data)")
 
-        print("2. Log into Schwab and approve access.")
-        print("3. Your browser will redirect to https://127.0.0.1/?code=... (it may say 'site can't be reached' — this is normal!)")
-        print("4. COPY the entire URL from your browser's address bar and paste it below:\n")
-        
-        redirected_url = input("Paste redirected URL here: ").strip()
-        auth.exchange_code_for_tokens(redirected_url)
-        
-        print("\n" + "=" * 70)
-        print("✅ SUCCESS! Schwab Tokens stored in data_cache/schwab_token.json")
-        print("=" * 70)
-
-        # Print account hash
+        # Print account hash and current cash balance
         from execution.schwab_broker import SchwabBroker
         broker = SchwabBroker(auth=auth)
         print(f"\nYour Schwab Account Hash: {broker.account_hash}")

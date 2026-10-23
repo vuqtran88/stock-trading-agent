@@ -9,6 +9,7 @@ import base64
 import logging
 import time
 import webbrowser
+import subprocess
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -21,6 +22,151 @@ logger = logging.getLogger(__name__)
 
 SCHWAB_AUTH_URL = "https://api.schwabapi.com/v1/oauth/authorize"
 SCHWAB_TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token"
+
+
+def detect_redirect_url_from_system() -> Optional[str]:
+    """Inspect active macOS browsers (Chrome, Safari, Brave, Edge) and clipboard for OAuth redirect."""
+    # 1. Google Chrome
+    chrome_script = """
+    tell application "System Events"
+        if (exists process "Google Chrome") then
+            tell application "Google Chrome"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set u to URL of t
+                        if (u contains "127.0.0.1" or u contains "localhost") and u contains "code=" then
+                            return u
+                        end if
+                    end repeat
+                end repeat
+            end tell
+        end if
+    end tell
+    return ""
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", chrome_script], capture_output=True, text=True, timeout=2)
+        url = res.stdout.strip()
+        if url and "code=" in url:
+            return url
+    except Exception:
+        pass
+
+    # 2. Safari
+    safari_script = """
+    tell application "System Events"
+        if (exists process "Safari") then
+            tell application "Safari"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set u to URL of t
+                        if (u contains "127.0.0.1" or u contains "localhost") and u contains "code=" then
+                            return u
+                        end if
+                    end repeat
+                end repeat
+            end tell
+        end if
+    end tell
+    return ""
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", safari_script], capture_output=True, text=True, timeout=2)
+        url = res.stdout.strip()
+        if url and "code=" in url:
+            return url
+    except Exception:
+        pass
+
+    # 3. Brave Browser
+    brave_script = """
+    tell application "System Events"
+        if (exists process "Brave Browser") then
+            tell application "Brave Browser"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set u to URL of t
+                        if (u contains "127.0.0.1" or u contains "localhost") and u contains "code=" then
+                            return u
+                        end if
+                    end repeat
+                end repeat
+            end tell
+        end if
+    end tell
+    return ""
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", brave_script], capture_output=True, text=True, timeout=2)
+        url = res.stdout.strip()
+        if url and "code=" in url:
+            return url
+    except Exception:
+        pass
+
+    # 4. Microsoft Edge
+    edge_script = """
+    tell application "System Events"
+        if (exists process "Microsoft Edge") then
+            tell application "Microsoft Edge"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set u to URL of t
+                        if (u contains "127.0.0.1" or u contains "localhost") and u contains "code=" then
+                            return u
+                        end if
+                    end repeat
+                end repeat
+            end tell
+        end if
+    end tell
+    return ""
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", edge_script], capture_output=True, text=True, timeout=2)
+        url = res.stdout.strip()
+        if url and "code=" in url:
+            return url
+    except Exception:
+        pass
+
+    # 5. macOS Clipboard
+    try:
+        res = subprocess.run(["osascript", "-e", "return the clipboard"], capture_output=True, text=True, timeout=1)
+        clip = res.stdout.strip()
+        if "code=" in clip and ("127.0.0.1" in clip or "code=C0." in clip or "schwab" in clip):
+            return clip
+    except Exception:
+        pass
+
+    return None
+
+
+def close_browser_redirect_tabs():
+    """Politely close redirect tabs in open browsers after code extraction."""
+    for browser in ["Google Chrome", "Safari", "Brave Browser", "Microsoft Edge"]:
+        script = f"""
+        tell application "System Events"
+            if (exists process "{browser}") then
+                tell application "{browser}"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            set u to URL of t
+                            if (u contains "127.0.0.1" or u contains "localhost") and u contains "code=" then
+                                close t
+                                return "closed"
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end if
+        end tell
+        return ""
+        """
+        try:
+            subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
+        except Exception:
+            pass
 
 
 class _OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -93,11 +239,97 @@ class SchwabAuth:
         if "refresh_token" not in token_data and self.tokens and "refresh_token" in self.tokens:
             token_data["refresh_token"] = self.tokens["refresh_token"]
 
+        # Record token creation timestamp if not present (useful for 7-day refresh token lifespan tracking)
+        if "created_at" not in token_data:
+            token_data["created_at"] = time.time()
+
         self.tokens = token_data
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.token_file, "w") as f:
             json.dump(token_data, f, indent=2)
         logger.info(f"Schwab tokens cached at {self.token_file}")
+
+        # Automatically synchronize token to Google Cloud Secret Manager if configured/available
+        self.sync_to_secret_manager()
+
+    def get_refresh_token_status(self) -> Dict:
+        """Returns refresh token health, age, remaining lifetime (7-day maximum), and warning status."""
+        if not self.tokens or not self.tokens.get("refresh_token"):
+            return {
+                "has_token": False,
+                "status": "MISSING",
+                "message": "No refresh token available",
+                "hours_remaining": 0.0,
+                "days_remaining": 0.0,
+                "expires_at_ts": 0,
+                "is_near_expiry": True,
+            }
+
+        # 1. Determine token creation time (7 days = 604,800 seconds max lifespan)
+        created_at = self.tokens.get("created_at")
+        if not created_at and "id_token" in self.tokens:
+            try:
+                parts = self.tokens["id_token"].split(".")
+                if len(parts) >= 2:
+                    body = parts[1] + "=" * (-len(parts[1]) % 4)
+                    claims = json.loads(base64.b64decode(body))
+                    created_at = float(claims.get("iat", 0))
+            except Exception:
+                pass
+
+        if not created_at:
+            created_at = time.time()  # Fallback
+
+        lifespan_sec = 7 * 86400  # 7 days
+        expires_at_ts = created_at + lifespan_sec
+        now = time.time()
+        sec_remaining = max(0.0, expires_at_ts - now)
+        hours_remaining = round(sec_remaining / 3600, 1)
+        days_remaining = round(sec_remaining / 86400, 2)
+
+        # Status categorization
+        if sec_remaining <= 0:
+            status = "EXPIRED"
+            message = "Refresh token expired. Live trading will fail until renewed."
+        elif hours_remaining <= 24:
+            status = "CRITICAL"
+            message = f"Refresh token expires in {hours_remaining:.0f}h! Renew immediately."
+        elif hours_remaining <= 48:
+            status = "WARNING"
+            message = f"Refresh token expires in {days_remaining:.1f} days ({hours_remaining:.0f}h)."
+        else:
+            status = "HEALTHY"
+            message = f"Refresh token active ({days_remaining:.1f} days remaining)."
+
+        return {
+            "has_token": True,
+            "created_at": created_at,
+            "expires_at_ts": expires_at_ts,
+            "hours_remaining": hours_remaining,
+            "days_remaining": days_remaining,
+            "status": status,
+            "message": message,
+            "is_near_expiry": hours_remaining <= 48,
+        }
+
+    def sync_to_secret_manager(self) -> bool:
+        """Persist tokens directly to GCP Secret Manager (schwab-token-data)."""
+        if not self.tokens:
+            return False
+        try:
+            from google.cloud import secretmanager
+            secret_name = "projects/stock-trading-agent-249477/secrets/schwab-token-data"
+            client = secretmanager.SecretManagerServiceClient()
+            payload_bytes = json.dumps(self.tokens, indent=2).encode("utf-8")
+            client.add_secret_version(
+                parent=secret_name,
+                payload={"data": payload_bytes},
+            )
+            logger.info("Persisted updated Schwab tokens to GCP Secret Manager.")
+            return True
+        except Exception as e:
+            logger.warning(f"Could not persist Schwab tokens to Secret Manager: {e}")
+            return False
 
     def _get_basic_auth_header(self) -> Dict[str, str]:
         """Schwab requires Basic Auth encoding of AppKey:AppSecret."""
@@ -157,24 +389,56 @@ class SchwabAuth:
         parsed_cb = urllib.parse.urlparse(self.callback_url)
         listen_port = parsed_cb.port or 80
 
-        print(f"Attempting to catch redirect at {self.callback_url}...")
+        print(f"Waiting for redirect code from browser...")
+        print("(You just log in and click Approve — the code will be captured automatically!)")
+
+        # 1. Attempt local HTTP server listener if port specified
+        server = None
         try:
             _OAuthCallbackHandler.auth_code = None
             server = HTTPServer(("127.0.0.1", listen_port), _OAuthCallbackHandler)
-            server.timeout = 10
-            # Wait up to 60 seconds
-            start_t = time.time()
-            while _OAuthCallbackHandler.auth_code is None and (time.time() - start_t) < 60:
-                server.handle_request()
-            server.server_close()
-            if _OAuthCallbackHandler.auth_code:
-                return self.exchange_code_for_tokens(_OAuthCallbackHandler.auth_code)
+            server.timeout = 1
         except Exception as e:
-            logger.debug(f"Local server listener failed or timed out: {e}")
+            logger.debug(f"Could not bind local listener on port {listen_port}: {e}")
 
-        # Fallback to manual paste prompt
-        print("\nIf your browser redirected to 'This site can't be reached' or 127.0.0.1:")
-        print("Please COPY the entire redirected URL from your browser address bar and paste it below.")
+        # 2. Poll for redirect in browser URL bar, clipboard, or local HTTP server (up to 120s)
+        start_t = time.time()
+        timeout_seconds = 120
+        captured_url_or_code = None
+
+        while (time.time() - start_t) < timeout_seconds:
+            # Check local server if active
+            if server:
+                try:
+                    server.handle_request()
+                    if _OAuthCallbackHandler.auth_code:
+                        captured_url_or_code = _OAuthCallbackHandler.auth_code
+                        break
+                except Exception:
+                    pass
+
+            # Check active browser address bar and clipboard automatically
+            detected = detect_redirect_url_from_system()
+            if detected:
+                captured_url_or_code = detected
+                print("\n⚡ Automatically captured redirect code from browser!")
+                close_browser_redirect_tabs()
+                break
+
+            time.sleep(1)
+
+        if server:
+            try:
+                server.server_close()
+            except Exception:
+                pass
+
+        if captured_url_or_code:
+            return self.exchange_code_for_tokens(captured_url_or_code)
+
+        # Fallback to manual paste prompt if auto-detection timed out
+        print("\nCould not automatically read browser redirect URL.")
+        print("Please COPY the URL from your browser address bar and paste it below:")
         user_input = input("Paste redirected URL or code: ").strip()
         return self.exchange_code_for_tokens(user_input)
 
