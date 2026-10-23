@@ -212,7 +212,8 @@ class SchwabAuth:
         self._load_cached_tokens()
 
     def _load_cached_tokens(self):
-        """Load stored tokens from disk or from Secret Manager environment variable."""
+        """Load stored tokens from disk or dynamically from GCP Secret Manager API."""
+        # 1. First check local disk cache
         if self.token_file.exists():
             try:
                 with open(self.token_file, "r") as f:
@@ -221,13 +222,27 @@ class SchwabAuth:
             except Exception as e:
                 logger.warning(f"Error reading token file: {e}")
 
-        # Fallback to SCHWAB_TOKEN_DATA (injected from GCP Secret Manager)
+        # 2. In cloud environments, fetch latest token directly from GCP Secret Manager API
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            secret_name = "projects/stock-trading-agent-249477/secrets/schwab-token-data/versions/latest"
+            resp = client.access_secret_version(name=secret_name)
+            payload = resp.payload.data.decode("utf-8")
+            if payload:
+                self.tokens = json.loads(payload)
+                logger.info("Fetched fresh Schwab tokens directly from GCP Secret Manager API.")
+                return
+        except Exception as e:
+            logger.debug(f"Direct Secret Manager token fetch skipped/failed: {e}")
+
+        # 3. Fallback to SCHWAB_TOKEN_DATA environment variable
         if settings.SCHWAB_TOKEN_DATA:
             try:
                 self.tokens = json.loads(settings.SCHWAB_TOKEN_DATA)
-                logger.info("Loaded Schwab OAuth tokens from Secret Manager environment.")
+                logger.info("Loaded Schwab OAuth tokens from Secret Manager environment variable.")
             except Exception as e:
-                logger.warning(f"Failed to parse SCHWAB_TOKEN_DATA JSON from Secret Manager: {e}")
+                logger.warning(f"Failed to parse SCHWAB_TOKEN_DATA JSON: {e}")
 
     def _save_tokens(self, token_data: Dict):
         """Save tokens with calculated expiration timestamp."""
