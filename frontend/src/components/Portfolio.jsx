@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
-import { Wallet, DollarSign, Layers, ArrowUpRight, ArrowDownRight, XCircle, Landmark, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wallet, DollarSign, Layers, ArrowUpRight, ArrowDownRight, XCircle, Landmark, TrendingUp, History, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 
-export default function Portfolio({ portfolio, onSellPosition }) {
+export default function Portfolio({ portfolio, onSellPosition, onRefresh }) {
   const [showCashFlows, setShowCashFlows] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncTransfers = async (e) => {
+    e.stopPropagation();
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/trading/sync-cash-flows', { method: 'POST' });
+      if (res.ok && onRefresh) {
+        await onRefresh();
+      }
+    } catch (err) {
+      console.error('Error syncing transfers:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const positions = portfolio?.positions || [];
   const cash = portfolio?.cash || 0;
@@ -188,9 +204,23 @@ export default function Portfolio({ portfolio, onSellPosition }) {
               </p>
             </div>
           </div>
-          <button type="button" className="text-slate-400 hover:text-white p-1">
-            {showCashFlows ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center space-x-2">
+            {portfolio?.env === 'live' && (
+              <button
+                type="button"
+                onClick={handleSyncTransfers}
+                disabled={isSyncing}
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                title="Sync recent bank deposits & withdrawals from Schwab"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Checking Schwab...' : 'Sync Transfers'}</span>
+              </button>
+            )}
+            <button type="button" className="text-slate-400 hover:text-white p-1">
+              {showCashFlows ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {showCashFlows && (

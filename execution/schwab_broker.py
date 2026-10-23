@@ -133,6 +133,7 @@ class SchwabBroker(BaseBroker):
         self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        types: Optional[str] = None,
     ) -> List[Dict]:
         """Fetch transactions from Schwab account to detect bank deposits/withdrawals and trade executions."""
         if not self.account_hash:
@@ -146,6 +147,8 @@ class SchwabBroker(BaseBroker):
         end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         url = f"{SCHWAB_API_BASE}/accounts/{self.account_hash}/transactions?startDate={start_str}&endDate={end_str}"
+        if types:
+            url += f"&types={types}"
         try:
             resp = requests.get(url, headers=self._get_headers(), timeout=10)
             if resp.status_code == 200:

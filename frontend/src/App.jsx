@@ -369,6 +369,7 @@ export default function App() {
               portfolio={portfolio}
               loading={portfolioLoading}
               onClosePosition={handleClosePosition}
+              onRefresh={fetchPortfolio}
             />
 
             {/* Bottom Section: Automated Routine Actions (Full width in LIVE, 2-column with Manual Paper Desk in PAPER) */}

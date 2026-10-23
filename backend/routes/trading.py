@@ -28,7 +28,9 @@ router = APIRouter(prefix="/api/trading", tags=["trading"])
 fetcher = MarketDataFetcher()
 risk_mgr = RiskManager()
 
-ACTIVITY_LOG_FILE = settings.DATA_DIR / "action_activity_logs.json"
+# Throttle external Schwab transaction queries so 6-second dashboard polls don't bottleneck
+_LAST_SCHWAB_TX_SYNC: float = 0.0
+SCHWAB_TX_SYNC_INTERVAL_SEC: float = 300.0  # Check external bank transfers at most every 5 minutes
 
 
 def record_server_activity(text: str, event_type: str = "info", source: str = "SCHEDULED"):
@@ -128,17 +130,26 @@ def get_portfolio(user: str = Depends(get_current_user)):
 
     use_regime_filter = overrides.get("use_regime_filter", True)
 
-    # 4. Ingest Cash Flows & Compute True Strategy P&L
+    # 4. Ingest Cash Flows & Compute True Strategy P&L (Throttled & Incremental)
+    global _LAST_SCHWAB_TX_SYNC
     total_equity = cash + total_market_val
     ledger_mgr = CapitalLedgerManager(env=env)
 
     if env == "live" and isinstance(broker, SchwabBroker):
-        try:
-            txs = broker.get_transactions()
-            if txs:
-                ledger_mgr.sync_schwab_transactions(txs, current_equity=total_equity)
-        except Exception as e:
-            print(f"Error syncing Schwab transactions: {e}")
+        now_ts = datetime.now().timestamp()
+        has_cash_flows = bool(ledger_mgr.data.get("cash_flows"))
+        time_elapsed = now_ts - _LAST_SCHWAB_TX_SYNC
+
+        # Only query Schwab external transfers if throttled interval elapsed or ledger is completely uninitialized
+        if (not has_cash_flows) or (time_elapsed >= SCHWAB_TX_SYNC_INTERVAL_SEC):
+            try:
+                start_dt = ledger_mgr.get_sync_start_date()
+                txs = broker.get_transactions(start_date=start_dt, types="JOURNAL,ACH_RECEIPT,ACH_DISBURSEMENT,WIRE_IN,WIRE_OUT")
+                if txs:
+                    ledger_mgr.sync_schwab_transactions(txs, current_equity=total_equity)
+                _LAST_SCHWAB_TX_SYNC = now_ts
+            except Exception as e:
+                logger.warning(f"Error during incremental Schwab transaction sync: {e}")
 
     cap_metrics = ledger_mgr.get_metrics(current_total_equity=total_equity)
 
@@ -398,6 +409,41 @@ def get_trade_history(user: str = Depends(get_current_user)):
     history = broker.ledger.get("trade_history", [])
     # Return reverse chronological
     return {"history": list(reversed(history))}
+
+
+@router.post("/sync-cash-flows")
+def sync_cash_flows(user: str = Depends(get_current_user)):
+    """Force an immediate incremental sync of external bank transfers from Schwab."""
+    global _LAST_SCHWAB_TX_SYNC
+    overrides = get_active_overrides()
+    env = overrides.get("env") or settings.ENV
+    broker = get_current_broker()
+
+    if env != "live" or not isinstance(broker, SchwabBroker):
+        return {"success": True, "message": "Cash flow sync is only active in LIVE mode.", "updated": False}
+
+    try:
+        cash = broker.get_cash_balance()
+        positions_map = broker.get_positions()
+        mkt_val = sum(p.shares * (fetcher.get_latest_quote(s).get("last_price") or p.entry_price) for s, p in positions_map.items())
+        total_equity = cash + mkt_val
+
+        ledger_mgr = CapitalLedgerManager(env=env)
+        start_dt = ledger_mgr.get_sync_start_date()
+        txs = broker.get_transactions(start_date=start_dt, types="JOURNAL,ACH_RECEIPT,ACH_DISBURSEMENT,WIRE_IN,WIRE_OUT")
+        if txs:
+            ledger_mgr.sync_schwab_transactions(txs, current_equity=total_equity)
+        _LAST_SCHWAB_TX_SYNC = datetime.now().timestamp()
+        
+        metrics = ledger_mgr.get_metrics(total_equity)
+        return {
+            "success": True,
+            "message": f"Successfully checked Schwab for transfers (scanned {len(txs)} records).",
+            "metrics": metrics,
+        }
+    except Exception as e:
+        logger.error(f"Manual cash flow sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sync transfers: {e}")
 
 
 @router.get("/schwab-status")

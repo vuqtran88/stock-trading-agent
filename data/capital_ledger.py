@@ -8,7 +8,7 @@ and cached locally to disk.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -120,6 +120,36 @@ class CapitalLedgerManager:
         self._save_local()
         if self.env == "live":
             _sync_capital_ledger_to_secret(self.data)
+
+    def get_sync_start_date(self) -> Optional[datetime]:
+        """Determine incremental start date for querying Schwab transactions.
+        
+        If we already have transactions, we query from 1 day prior to the latest known
+        cash flow date to avoid fetching months/years of historical transactions.
+        If the ledger is brand new, returns None (full scan to establish baseline).
+        """
+        cash_flows = self.data.get("cash_flows", [])
+        if not cash_flows:
+            return None
+
+        # Find latest transaction date among recorded cash flows
+        latest_dt = None
+        for cf in cash_flows:
+            d_str = cf.get("date")
+            if d_str:
+                try:
+                    # Parse ISO or Schwab formatted string
+                    clean_str = d_str.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(clean_str)
+                    if latest_dt is None or dt > latest_dt:
+                        latest_dt = dt
+                except Exception:
+                    pass
+
+        if latest_dt:
+            # Query from 1 day before latest transaction as a safety buffer
+            return latest_dt - timedelta(days=1)
+        return None
 
     def sync_schwab_transactions(self, raw_transactions: List[Dict], current_equity: float):
         """Auto-ingest bank deposits and withdrawals directly from Schwab API transactions."""
