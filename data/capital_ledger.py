@@ -129,17 +129,28 @@ class CapitalLedgerManager:
             if activity_id in existing_ids:
                 continue
 
+            # Exclude internal margin/cash subaccount sweeps (e.g. TRF FUNDS FRM TYPE 1 / TO TYPE 2)
+            if "TYPE 1" in desc or "TYPE 2" in desc or "SWEEP" in desc:
+                continue
+
             # Identify external funding transfers (ACH, Journal from Schwab Bank, Wires)
             is_deposit = (
                 (tx_type == "JOURNAL" and "FROM SCHWAB BANK" in desc and net_amt > 0)
                 or (tx_type in ("ACH_RECEIPT", "CASH_RECEIPT", "WIRE_IN") and net_amt > 0)
             )
             is_withdrawal = (
-                (tx_type == "JOURNAL" and ("TO SCHWAB BANK" in desc or "TO TYPE 2" in desc) and net_amt < 0)
+                (tx_type == "JOURNAL" and "TO SCHWAB BANK" in desc and net_amt < 0)
                 or (tx_type in ("ACH_DISBURSEMENT", "CASH_DISBURSEMENT", "WIRE_OUT") and net_amt < 0)
             )
 
             if is_deposit or is_withdrawal:
+                # If this is the initial Oct 19 deposit and we already have INITIAL_DEPOSIT, avoid double counting
+                if is_deposit and abs(net_amt - 149.90) < 0.1 and "2026-10-19" in str(tx_time):
+                    # Check if an initial deposit is already present
+                    has_init = any(c.get("type") == "INITIAL_DEPOSIT" for c in self.data.get("cash_flows", []))
+                    if has_init:
+                        continue
+
                 cf_type = "DEPOSIT" if is_deposit else "WITHDRAWAL"
                 amount = abs(net_amt)
 
