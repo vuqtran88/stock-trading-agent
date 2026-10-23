@@ -112,24 +112,17 @@ class CapitalLedgerManager:
             _sync_capital_ledger_to_secret(self.data)
 
     def sync_schwab_transactions(self, raw_transactions: List[Dict], current_equity: float):
-        """Auto-ingest bank deposits and withdrawals from Schwab API transactions."""
+        """Auto-ingest bank deposits and withdrawals directly from Schwab API transactions."""
         if self.env != "live" or not raw_transactions:
             return
 
-        existing_ids = {cf.get("id") for cf in self.data.get("cash_flows", [])}
-        updated = False
-
+        # 1. Filter out internal margin/cash sweeps (e.g. TRF FUNDS FRM TYPE 1 / TO TYPE 2)
+        valid_txs = []
         for tx in raw_transactions:
             tx_type = (tx.get("type") or "").upper()
             net_amt = float(tx.get("netAmount") or 0.0)
             desc = (tx.get("description") or "").upper()
-            tx_time = tx.get("time") or tx.get("transactionDate") or datetime.now(timezone.utc).isoformat()
-            activity_id = str(tx.get("activityId") or tx.get("transactionId") or f"{tx_time}-{net_amt}")
 
-            if activity_id in existing_ids:
-                continue
-
-            # Exclude internal margin/cash subaccount sweeps (e.g. TRF FUNDS FRM TYPE 1 / TO TYPE 2)
             if "TYPE 1" in desc or "TYPE 2" in desc or "SWEEP" in desc:
                 continue
 
@@ -144,16 +137,30 @@ class CapitalLedgerManager:
             )
 
             if is_deposit or is_withdrawal:
-                # If this is the initial Oct 19 deposit and we already have INITIAL_DEPOSIT, avoid double counting
-                if is_deposit and abs(net_amt - 149.90) < 0.1 and "2026-10-19" in str(tx_time):
-                    # Check if an initial deposit is already present
-                    has_init = any(c.get("type") == "INITIAL_DEPOSIT" for c in self.data.get("cash_flows", []))
-                    if has_init:
-                        continue
+                valid_txs.append((tx, is_deposit, abs(net_amt)))
 
+        # 2. Sort chronologically so earliest bank transfer naturally establishes initial capital
+        valid_txs.sort(key=lambda item: item[0].get("time") or item[0].get("transactionDate") or "")
+
+        existing_ids = {cf.get("id") for cf in self.data.get("cash_flows", [])}
+        has_initial = any(cf.get("type") == "INITIAL_DEPOSIT" for cf in self.data.get("cash_flows", []))
+        updated = False
+
+        for tx, is_deposit, amount in valid_txs:
+            activity_id = str(tx.get("activityId") or tx.get("transactionId") or f"{tx.get('time')}-{amount}")
+            if activity_id in existing_ids:
+                continue
+
+            tx_time = tx.get("time") or tx.get("transactionDate") or datetime.now(timezone.utc).isoformat()
+
+            # Earliest discovered deposit becomes the baseline starting capital
+            if is_deposit and not has_initial:
+                cf_type = "INITIAL_DEPOSIT"
+                has_initial = True
+                self.data["initial_capital"] = round(amount, 2)
+                self.data["total_units"] = round(amount / 10.0, 4)
+            else:
                 cf_type = "DEPOSIT" if is_deposit else "WITHDRAWAL"
-                amount = abs(net_amt)
-
                 # Update Unit NAV before applying deposit (Time-Weighted Return preservation)
                 curr_units = self.data.get("total_units", 100.0)
                 curr_nav = (current_equity / curr_units) if curr_units > 0 else 10.0
@@ -164,15 +171,15 @@ class CapitalLedgerManager:
                 else:
                     self.data["total_units"] = max(1.0, curr_units - new_units)
 
-                self.data["cash_flows"].append({
-                    "id": activity_id,
-                    "date": tx_time,
-                    "type": cf_type,
-                    "amount": round(amount, 2),
-                    "description": tx.get("description") or f"Schwab Bank {cf_type.capitalize()}",
-                })
-                existing_ids.add(activity_id)
-                updated = True
+            self.data.setdefault("cash_flows", []).append({
+                "id": activity_id,
+                "date": tx_time,
+                "type": cf_type,
+                "amount": round(amount, 2),
+                "description": tx.get("description") or f"Schwab Bank {cf_type.capitalize()}",
+            })
+            existing_ids.add(activity_id)
+            updated = True
 
         if updated:
             self.data["last_synced_utc"] = datetime.now(timezone.utc).isoformat()
