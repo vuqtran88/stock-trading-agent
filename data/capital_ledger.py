@@ -59,24 +59,34 @@ class CapitalLedgerManager:
         self._load()
 
     def _default_ledger(self) -> Dict:
-        initial_cap = 10000.0 if self.env == "paper" else 149.90
         now_str = datetime.now(timezone.utc).isoformat()
-        return {
-            "environment": self.env,
-            "last_synced_utc": now_str,
-            "initial_capital": initial_cap,
-            "cash_flows": [
-                {
-                    "id": f"init-{int(datetime.now().timestamp())}",
-                    "date": now_str,
-                    "type": "INITIAL_DEPOSIT",
-                    "amount": initial_cap,
-                    "description": "Baseline Account Starting Capital",
-                }
-            ],
-            "unit_nav": 10.0,
-            "total_units": (initial_cap / 10.0) if initial_cap > 0 else 1.0,
-        }
+        if self.env == "paper":
+            initial_cap = 10000.0
+            return {
+                "environment": self.env,
+                "last_synced_utc": now_str,
+                "initial_capital": initial_cap,
+                "cash_flows": [
+                    {
+                        "id": f"paper-init-{int(datetime.now().timestamp())}",
+                        "date": now_str,
+                        "type": "INITIAL_DEPOSIT",
+                        "amount": initial_cap,
+                        "description": "Paper Starting Capital",
+                    }
+                ],
+                "unit_nav": 10.0,
+                "total_units": initial_cap / 10.0,
+            }
+        else:
+            return {
+                "environment": self.env,
+                "last_synced_utc": now_str,
+                "initial_capital": 0.0,
+                "cash_flows": [],
+                "unit_nav": 10.0,
+                "total_units": 0.0,
+            }
 
     def _load(self):
         """Load ledger from local disk cache, falling back to GCP Secret Manager for live env."""
