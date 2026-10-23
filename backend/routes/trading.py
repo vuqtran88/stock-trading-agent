@@ -72,8 +72,13 @@ def get_portfolio(user: str = Depends(get_current_user)):
     env = overrides.get("env") or settings.ENV
     broker = get_current_broker()
 
-    cash = broker.get_cash_balance()
-    positions_map = broker.get_positions()
+    try:
+        cash = broker.get_cash_balance()
+        positions_map = broker.get_positions()
+    except Exception as e:
+        logger.error(f"Failed to fetch live balance/positions from {broker.__class__.__name__}: {e}")
+        cash = 0.0
+        positions_map = {}
 
     # Calculate live current prices & unrealized P&L
     position_items: List[PositionItem] = []
