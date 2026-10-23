@@ -1,9 +1,12 @@
 """Trading operations, live portfolio, manual orders, and routine trigger routes."""
 
 import json
+import logging
 from datetime import datetime
 from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 
 
 from config.settings import settings
