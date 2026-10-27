@@ -23,8 +23,12 @@ earnings_filter = EarningsFilter()
 @router.post("", response_model=BacktestResponse)
 def run_custom_backtest(req: BacktestRequest, user: str = Depends(get_current_user)):
     """Run an on-demand backtest simulation across a custom date window."""
-    overrides = get_active_overrides()
-    tickers = overrides.get("tickers") or settings.ticker_list
+    if req.tickers and len(req.tickers) > 0:
+        # User specified an isolated universe specifically for this backtest
+        tickers = [t.strip().upper() for t in req.tickers if t.strip()]
+    else:
+        overrides = get_active_overrides()
+        tickers = overrides.get("tickers") or settings.ticker_list
     bench_symbol = settings.BENCHMARK_TICKER
 
     # 1. Fetch data

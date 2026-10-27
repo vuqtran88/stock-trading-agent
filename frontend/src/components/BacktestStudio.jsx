@@ -12,6 +12,10 @@ import {
   Percent,
   DollarSign,
   Activity,
+  Plus,
+  X,
+  Sliders,
+  Sparkles,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -24,6 +28,11 @@ import {
   CartesianGrid,
 } from 'recharts';
 
+const POPULAR_TICKERS = [
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AMD',
+  'NFLX', 'PLTR', 'AVGO', 'SMCI', 'COIN', 'ARM', 'UBER', 'CRWD'
+];
+
 export default function BacktestStudio() {
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -33,15 +42,24 @@ export default function BacktestStudio() {
   const [initialCapital, setInitialCapital] = useState(10000);
   const [positionSize, setPositionSize] = useState(1000);
 
+  // Independent backtest universe
+  const [backtestTickers, setBacktestTickers] = useState([
+    'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AMD'
+  ]);
+  const [customTickerInput, setCustomTickerInput] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
 
-  // Load configured regime_ema_period on mount
+  // Optionally load live universe on initial mount as a starting suggestion ONLY
   React.useEffect(() => {
     fetch('/api/config')
       .then((r) => r.json())
       .then((cfg) => {
+        if (cfg?.tickers && Array.isArray(cfg.tickers) && cfg.tickers.length > 0) {
+          setBacktestTickers(cfg.tickers);
+        }
         if (cfg?.regime_ema_period) {
           setRegimeEma(cfg.regime_ema_period);
         }
@@ -49,8 +67,26 @@ export default function BacktestStudio() {
       .catch(() => {});
   }, []);
 
+  const handleAddTicker = (tickerToAdd) => {
+    const sym = (tickerToAdd || customTickerInput).trim().toUpperCase();
+    if (!sym) return;
+    if (!backtestTickers.includes(sym)) {
+      setBacktestTickers([...backtestTickers, sym]);
+    }
+    setCustomTickerInput('');
+  };
+
+  const handleRemoveTicker = (sym) => {
+    setBacktestTickers(backtestTickers.filter((t) => t !== sym));
+  };
+
   const handleRunBacktest = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (backtestTickers.length === 0) {
+      setError('Please add at least one stock to the backtest universe.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -59,6 +95,7 @@ export default function BacktestStudio() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tickers: backtestTickers,
           start_date: startDate,
           end_date: endDate || null,
           top_n: Number(topN),
@@ -105,98 +142,186 @@ export default function BacktestStudio() {
       {/* Configuration Form */}
       <form
         onSubmit={handleRunBacktest}
-        className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 shadow-xl grid grid-cols-1 md:grid-cols-6 gap-4 items-end"
+        className="space-y-4"
       >
-        <div>
-          <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
-            Start Date
-          </label>
-          <div className="relative">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
-            />
+        {/* Backtest Universe Selector (Completely Isolated from Live/Paper Settings) */}
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-teal-400" />
+                <h3 className="text-sm font-semibold text-white">Backtest Target Universe</h3>
+                <span className="text-[10px] bg-teal-500/10 text-teal-400 border border-teal-500/20 px-2 py-0.5 rounded-full font-mono">
+                  {backtestTickers.length} stocks
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Configure stocks to test exclusively for this simulation. Changes made here <strong className="text-emerald-400">do not affect</strong> your Paper or Live trading settings.
+              </p>
+            </div>
+
+            {/* Quick Add Input */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Add symbol e.g. TSM..."
+                value={customTickerInput}
+                onChange={(e) => setCustomTickerInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddTicker();
+                  }
+                }}
+                className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white uppercase focus:outline-none focus:border-teal-500 font-mono w-44"
+              />
+              <button
+                type="button"
+                onClick={() => handleAddTicker()}
+                className="bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
-            End Date
-          </label>
-          <div className="relative">
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
-            Top N Stocks
-          </label>
-          <select
-            value={topN}
-            onChange={(e) => setTopN(e.target.value)}
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
-          >
-            <option value={1}>Top 1 Highest Momentum</option>
-            <option value={2}>Top 2 Highest Momentum</option>
-            <option value={3}>Top 3 Highest Momentum</option>
-            <option value={5}>Top 5 Highest Momentum</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
-            Position Size ($)
-          </label>
-          <input
-            type="number"
-            min="100"
-            max="10000"
-            step="100"
-            value={positionSize}
-            onChange={(e) => setPositionSize(e.target.value)}
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 pb-2">
-          <input
-            type="checkbox"
-            id="regime"
-            checked={regimeFilter}
-            onChange={(e) => setRegimeFilter(e.target.checked)}
-            className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-teal-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-          />
-          <label htmlFor="regime" className="text-xs text-slate-300 font-medium cursor-pointer">
-            Filter by {regimeEma} EMA Regime
-          </label>
-        </div>
-
-        <div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-medium py-2 rounded-xl text-xs transition-all shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <RotateCcw className="w-4 h-4 animate-spin" />
-                Simulating...
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-white" />
-                Run Backtest
-              </>
+          {/* Active Backtest Tickers Chips */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {backtestTickers.map((sym) => (
+              <span
+                key={sym}
+                className="inline-flex items-center gap-1.5 bg-slate-950 border border-slate-800/80 hover:border-slate-700 text-slate-200 px-2.5 py-1 rounded-lg text-xs font-mono transition-all"
+              >
+                {sym}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTicker(sym)}
+                  className="text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            {backtestTickers.length === 0 && (
+              <span className="text-xs text-amber-400/90 py-1 italic">
+                No stocks selected. Please add stocks or click a preset below.
+              </span>
             )}
-          </button>
+          </div>
+
+          {/* Popular Presets */}
+          <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1 text-slate-500 mr-1">
+              <Sparkles className="w-3 h-3 text-amber-400/80" />
+              Quick add:
+            </span>
+            {POPULAR_TICKERS.filter((sym) => !backtestTickers.includes(sym)).map((sym) => (
+              <button
+                key={sym}
+                type="button"
+                onClick={() => handleAddTicker(sym)}
+                className="bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-teal-300 border border-slate-800/60 px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer"
+              >
+                +{sym}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Backtest Simulation Parameters */}
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl p-5 shadow-xl grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+              Start Date
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+              End Date
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+              Top N Stocks
+            </label>
+            <select
+              value={topN}
+              onChange={(e) => setTopN(e.target.value)}
+              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+            >
+              <option value={1}>Top 1 Highest Momentum</option>
+              <option value={2}>Top 2 Highest Momentum</option>
+              <option value={3}>Top 3 Highest Momentum</option>
+              <option value={5}>Top 5 Highest Momentum</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+              Initial Capital ($)
+            </label>
+            <input
+              type="number"
+              min="1000"
+              max="1000000"
+              step="1000"
+              value={initialCapital}
+              onChange={(e) => setInitialCapital(e.target.value)}
+              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pb-2">
+            <input
+              type="checkbox"
+              id="regime"
+              checked={regimeFilter}
+              onChange={(e) => setRegimeFilter(e.target.checked)}
+              className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-teal-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            />
+            <label htmlFor="regime" className="text-xs text-slate-300 font-medium cursor-pointer">
+              Filter by {regimeEma} EMA Regime
+            </label>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-medium py-2 rounded-xl text-xs transition-all shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <RotateCcw className="w-4 h-4 animate-spin" />
+                  Simulating...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-white" />
+                  Run Backtest
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
 

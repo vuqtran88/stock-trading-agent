@@ -73,6 +73,7 @@ class PortfolioResponse(BaseModel):
 
 
 class BacktestRequest(BaseModel):
+    tickers: Optional[List[str]] = None
     start_date: str = "2023-01-01"
     end_date: Optional[str] = None
     top_n: int = 2
