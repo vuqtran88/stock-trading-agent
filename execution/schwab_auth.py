@@ -250,12 +250,18 @@ class SchwabAuth:
         expires_in = token_data.get("expires_in", 1800)
         token_data["expires_at"] = time.time() + expires_in - 60  # 60s safety buffer
 
-        # Preserve existing refresh token if not in response
-        if "refresh_token" not in token_data and self.tokens and "refresh_token" in self.tokens:
-            token_data["refresh_token"] = self.tokens["refresh_token"]
+        # Preserve existing refresh token and original created_at if not renewed
+        existing_rt = self.tokens.get("refresh_token") if self.tokens else None
+        incoming_rt = token_data.get("refresh_token")
 
-        # Record token creation timestamp if not present (useful for 7-day refresh token lifespan tracking)
-        if "created_at" not in token_data:
+        if not incoming_rt and existing_rt:
+            token_data["refresh_token"] = existing_rt
+
+        # Only reset created_at if a brand-new refresh token was issued
+        is_new_refresh_token = bool(incoming_rt and existing_rt and incoming_rt != existing_rt)
+        if not is_new_refresh_token and self.tokens and "created_at" in self.tokens:
+            token_data["created_at"] = self.tokens["created_at"]
+        elif "created_at" not in token_data:
             token_data["created_at"] = time.time()
 
         self.tokens = token_data
