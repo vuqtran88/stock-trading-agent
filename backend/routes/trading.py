@@ -32,6 +32,8 @@ risk_mgr = RiskManager()
 _LAST_SCHWAB_TX_SYNC: float = 0.0
 SCHWAB_TX_SYNC_INTERVAL_SEC: float = 300.0  # Check external bank transfers at most every 5 minutes
 
+ACTIVITY_LOG_FILE = settings.DATA_DIR / "server_activity_log.json"
+
 
 def record_server_activity(text: str, event_type: str = "info", source: str = "SCHEDULED"):
     """Persist an execution activity to disk so web dashboard can display both scheduled & manual events."""
