@@ -120,3 +120,69 @@ def test_schwab_web_oauth_endpoints(monkeypatch):
     assert resp_ok.status_code == 200
     assert "Charles Schwab Connected!" in resp_ok.text
 
+
+def test_activity_logs_and_schwab_status_endpoints(monkeypatch):
+    from unittest.mock import MagicMock
+    from execution.schwab_broker import SchwabBroker
+
+    # Authenticate client
+    resp = client.post("/api/auth/login", json={"password": settings.DASHBOARD_PASSWORD})
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Test /api/trading/activity-logs (ensures ACTIVITY_LOG_FILE is defined and 200 OK)
+    resp = client.get("/api/trading/activity-logs", headers=headers)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+    # 2. Test /api/trading/schwab-status returns 200 OK without crashing
+    monkeypatch.setattr(SchwabBroker, "get_cash_balance", lambda self: 2500.0)
+    monkeypatch.setattr(SchwabBroker, "get_positions", lambda self: {})
+    resp = client.get("/api/trading/schwab-status", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["connected"] is True
+    assert resp.json()["settled_cash"] == 2500.0
+
+
+def test_schwab_broker_retry_on_401(monkeypatch):
+    from unittest.mock import MagicMock
+    from execution.schwab_broker import SchwabBroker
+    from execution.schwab_auth import SchwabAuth
+
+    mock_auth = MagicMock(spec=SchwabAuth)
+    mock_auth.tokens = {"refresh_token": "VALID_RT", "access_token": "EXPIRED_AT"}
+    mock_auth.get_access_token.return_value = "EXPIRED_AT"
+    mock_auth.refresh_access_token.return_value = "NEW_VALID_AT"
+
+    broker = SchwabBroker(auth=mock_auth, account_hash="TEST_ACCOUNT_HASH")
+
+    # Mock requests to return 401 on first call, then 200 on retry
+    resp_401 = MagicMock()
+    resp_401.status_code = 401
+    resp_401.text = "Client not authorized"
+
+    resp_200 = MagicMock()
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "securitiesAccount": {
+            "currentBalances": {"cashBalance": 1234.56}
+        }
+    }
+
+    call_count = 0
+    def mock_request(method, url, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return resp_401
+        return resp_200
+
+    import requests
+    monkeypatch.setattr(requests, "request", mock_request)
+
+    cash = broker.get_cash_balance()
+    assert cash == 1234.56
+    assert call_count == 2
+    assert mock_auth.refresh_access_token.called
+
+

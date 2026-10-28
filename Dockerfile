@@ -29,8 +29,8 @@ COPY . .
 # Copy compiled frontend from Stage 1 into frontend/dist
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Mandatory GCP Pre-Flight Testing: Assert deterministic trading cycle passes
-RUN pytest tests/test_deterministic_cycle.py -v
+# Mandatory GCP Pre-Flight Testing: Assert deterministic trading cycle and backend API integrity pass
+RUN pytest tests/test_deterministic_cycle.py tests/test_backend_api.py -v
 
 # Expose standard Cloud Run port
 ENV PORT=8080

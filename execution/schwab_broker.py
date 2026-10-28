@@ -31,8 +31,11 @@ class SchwabBroker(BaseBroker):
         if not self.account_hash:
             self._auto_detect_account_hash()
 
-    def _get_headers(self, is_json: bool = False) -> Dict[str, str]:
-        token = self.auth.get_access_token()
+    def _get_headers(self, is_json: bool = False, force_refresh: bool = False) -> Dict[str, str]:
+        if force_refresh:
+            token = self.auth.refresh_access_token()
+        else:
+            token = self.auth.get_access_token()
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -40,6 +43,24 @@ class SchwabBroker(BaseBroker):
         if is_json:
             headers["Content-Type"] = "application/json"
         return headers
+
+    def _request_with_retry(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Execute HTTP request with automatic 401 token refresh and retry."""
+        headers = self._get_headers(is_json="json" in kwargs)
+        kwargs["headers"] = headers
+        resp = requests.request(method, url, **kwargs)
+
+        # If Schwab rejects token with 401 Unauthorized, automatically refresh and retry once
+        if resp.status_code == 401 and self.auth.tokens and "refresh_token" in self.auth.tokens:
+            logger.info("Received 401 Unauthorized from Schwab API. Attempting automatic token refresh and retry...")
+            try:
+                new_headers = self._get_headers(is_json="json" in kwargs, force_refresh=True)
+                kwargs["headers"] = new_headers
+                resp = requests.request(method, url, **kwargs)
+            except Exception as e:
+                logger.warning(f"Automatic retry token refresh failed: {e}")
+
+        return resp
 
     def _auto_detect_account_hash(self):
         """Fetch account numbers and select the first available account hash."""
@@ -81,7 +102,7 @@ class SchwabBroker(BaseBroker):
             raise RuntimeError("SCHWAB_ACCOUNT_HASH is not set and could not be detected.")
 
         url = f"{SCHWAB_API_BASE}/accounts/{self.account_hash}?fields=positions"
-        resp = requests.get(url, headers=self._get_headers(), timeout=10)
+        resp = self._request_with_retry("GET", url, timeout=10)
         if resp.status_code != 200:
             raise RuntimeError(f"Schwab get_cash_balance error ({resp.status_code}): {resp.text}")
 
@@ -103,7 +124,7 @@ class SchwabBroker(BaseBroker):
             raise RuntimeError("SCHWAB_ACCOUNT_HASH is not set.")
 
         url = f"{SCHWAB_API_BASE}/accounts/{self.account_hash}?fields=positions"
-        resp = requests.get(url, headers=self._get_headers(), timeout=10)
+        resp = self._request_with_retry("GET", url, timeout=10)
         if resp.status_code != 200:
             raise RuntimeError(f"Schwab get_positions error: {resp.text}")
 
@@ -150,7 +171,7 @@ class SchwabBroker(BaseBroker):
         if types:
             url += f"&types={types}"
         try:
-            resp = requests.get(url, headers=self._get_headers(), timeout=10)
+            resp = self._request_with_retry("GET", url, timeout=10)
             if resp.status_code == 200:
                 return resp.json()
             else:
@@ -183,7 +204,7 @@ class SchwabBroker(BaseBroker):
             ],
         }
 
-        resp = requests.post(url, headers=self._get_headers(is_json=True), json=order_payload, timeout=15)
+        resp = self._request_with_retry("POST", url, json=order_payload, timeout=15)
         now_str = datetime.now().isoformat()
 
         if resp.status_code not in (200, 201):
