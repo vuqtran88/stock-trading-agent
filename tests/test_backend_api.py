@@ -306,3 +306,14 @@ def test_production_write_guardrail_blocks_unmocked_secret_manager_write():
     client = secretmanager.SecretManagerServiceClient()
     with pytest.raises(RuntimeError, match="CRITICAL TEST GUARD"):
         client.add_secret_version(parent="projects/stock-trading-agent-249477/secrets/test", payload={"data": b"leak"})
+
+
+def test_secret_manager_redirects_to_test_secret():
+    """Verify that accessing production secret name transparently loads test secret without touching prod."""
+    from google.cloud import secretmanager
+    client = secretmanager.SecretManagerServiceClient()
+    resp = client.access_secret_version(name="projects/stock-trading-agent-249477/secrets/strategy-runtime-config/versions/latest")
+    assert "test-strategy-runtime-config" in resp.name
+    data = json.loads(resp.payload.data.decode("utf-8"))
+    assert "paper" in data
+    assert "live" in data
