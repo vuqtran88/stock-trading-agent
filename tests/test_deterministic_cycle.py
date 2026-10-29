@@ -89,8 +89,19 @@ class MockDeterministicFetcher:
 
 
 @pytest.fixture
-def sandbox_env(tmp_path):
+def sandbox_env(tmp_path, monkeypatch):
     """Sets up an isolated paper ledger and audit receipt directory."""
+    from backend.routes import config
+    test_override_file = tmp_path / "config_override.json"
+    monkeypatch.setattr(config, "OVERRIDE_FILE", test_override_file)
+    monkeypatch.setattr(config, "_fetch_from_secret_manager", lambda: {
+        "env": "paper",
+        "paper": {"tickers": ["AAPL", "NVDA", "MSFT", "AMD"], "top_n": 2, "strategy_enabled": True, "use_regime_filter": True},
+        "live": {"tickers": ["AAPL", "NVDA", "MSFT", "AMD"], "top_n": 2, "strategy_enabled": True, "use_regime_filter": True},
+    })
+    monkeypatch.setattr(config, "_sync_to_secret_manager", lambda overrides: None)
+    monkeypatch.setattr(config, "_IN_MEMORY_CACHE", (None, 0.0))
+
     test_state_file = tmp_path / "test_paper_ledger.json"
     test_audit_dir = tmp_path / "audit"
     test_audit_dir.mkdir(parents=True, exist_ok=True)
