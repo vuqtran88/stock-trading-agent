@@ -298,3 +298,11 @@ def test_secret_manager_precedence_over_stale_disk_cache(monkeypatch, tmp_path):
     assert active["top_n"] == 3
 
 
+
+
+def test_production_write_guardrail_blocks_unmocked_secret_manager_write():
+    """Verify that any unmocked SecretManager add_secret_version call is strictly blocked."""
+    from google.cloud import secretmanager
+    client = secretmanager.SecretManagerServiceClient()
+    with pytest.raises(RuntimeError, match="CRITICAL TEST GUARD"):
+        client.add_secret_version(parent="projects/stock-trading-agent-249477/secrets/test", payload={"data": b"leak"})
