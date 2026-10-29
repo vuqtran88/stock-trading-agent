@@ -9,6 +9,6 @@ __pycache__
 .env
 .env.*
 !.env.example
-data_cache/schwab_token.json
-data_cache/audit/*.json
+data_cache/config_override.json
+data_cache/*.json
 !data_cache/audit/.gitkeep

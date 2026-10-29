@@ -142,6 +142,11 @@ export default function App() {
         '⚠️ ATTENTION: You are about to switch to LIVE Trading Mode.\n\nReal money Schwab orders will be executed automatically by the trading engine.\n\nAre you sure you want to proceed?'
       );
       if (!confirmed) return;
+    } else if (nextEnv === 'paper') {
+      const confirmed = confirm(
+        '⏸️ SWITCH TO PAPER TRADING?\n\nSwitching to Simulated Paper Trading will PAUSE automated live executions on Charles Schwab.\n\nAny existing live positions on Schwab will NOT be liquidated automatically.\n\nAre you sure you want to switch to Paper mode?'
+      );
+      if (!confirmed) return;
     }
 
     try {
@@ -400,7 +405,7 @@ export default function App() {
               }`}
             >
               <Sliders className="w-4 h-4" />
-              Universe & Strategy
+              Strategy Settings
             </button>
 
             <button
@@ -453,7 +458,7 @@ export default function App() {
 
         {activeTab === 'backtest' && <BacktestStudio />}
 
-        {activeTab === 'universe' && <Universe />}
+        {activeTab === 'universe' && <Universe activeEnv={currentEnv} onEnvChange={handleToggleEnv} />}
 
         {activeTab === 'history' && <History />}
       </div>

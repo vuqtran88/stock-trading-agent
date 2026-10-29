@@ -16,7 +16,8 @@ class LoginResponse(BaseModel):
 
 class ConfigUpdateRequest(BaseModel):
     tickers: Optional[List[str]] = None
-    env: Optional[str] = None  # "paper" or "live"
+    env: Optional[str] = None  # "paper" or "live" (sets active mode)
+    target_env: Optional[str] = None  # Optional: "paper" or "live" to specify which config block to update
     max_position_size_usd: Optional[float] = None
     live_pilot_budget_usd: Optional[float] = None
     regime_ema_period: Optional[int] = None

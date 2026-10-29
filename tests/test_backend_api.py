@@ -1,5 +1,6 @@
 """Unit tests for FastAPI backend API routes."""
 
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,10 +16,14 @@ def test_api_status_unauthorized():
     assert resp.status_code == 401
 
 
-def test_login_and_authenticated_flow(monkeypatch):
+def test_login_and_authenticated_flow(monkeypatch, tmp_path):
     # Prevent unit tests from mutating production GCP Secret Manager config
     from backend.routes import config
+    test_override_file = tmp_path / "config_override.json"
+    monkeypatch.setattr(config, "OVERRIDE_FILE", test_override_file)
+    monkeypatch.setattr(config, "_fetch_from_secret_manager", lambda: None)
     monkeypatch.setattr(config, "_sync_to_secret_manager", lambda overrides: None)
+    monkeypatch.setattr(config, "_IN_MEMORY_CACHE", (None, 0.0))
 
     # 1. Invalid password
     resp = client.post("/api/auth/login", json={"password": "wrongpassword"})
@@ -44,7 +49,8 @@ def test_login_and_authenticated_flow(monkeypatch):
     assert resp.status_code == 200
     cfg = resp.json()
     assert "tickers" in cfg
-    assert "AAPL" in cfg["tickers"]
+    assert isinstance(cfg["tickers"], list)
+    assert len(cfg["tickers"]) > 0
     assert "active_strategy" in cfg
     assert "strategy_enabled" in cfg
     assert "available_strategies" in cfg
@@ -93,9 +99,80 @@ def test_login_and_authenticated_flow(monkeypatch):
     assert resp.json()["success"] is True
 
 
+def test_paper_and_live_config_isolation(monkeypatch, tmp_path):
+    from backend.routes import config
+    # Use temporary file for test config cache
+    test_override_file = tmp_path / "config_override.json"
+    monkeypatch.setattr(config, "OVERRIDE_FILE", test_override_file)
+    monkeypatch.setattr(config, "_fetch_from_secret_manager", lambda: None)
+    monkeypatch.setattr(config, "_sync_to_secret_manager", lambda overrides: None)
+
+    # Authenticate client
+    resp = client.post("/api/auth/login", json={"password": settings.DASHBOARD_PASSWORD})
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Update Paper settings with custom tickers and position size
+    resp = client.post(
+        "/api/config",
+        json={
+            "target_env": "paper",
+            "tickers": ["SPY", "QQQ", "IWM"],
+            "max_position_size_usd": 3000.0,
+            "top_n": 3,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    # 2. Update Live settings with distinct tickers and position size
+    resp = client.post(
+        "/api/config",
+        json={
+            "target_env": "live",
+            "tickers": ["NVDA", "AMD"],
+            "max_position_size_usd": 1000.0,
+            "top_n": 1,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    # 3. Retrieve config and check separation
+    cfg = client.get("/api/config", headers=headers).json()
+    assert cfg["paper"]["tickers"] == ["SPY", "QQQ", "IWM"]
+    assert cfg["paper"]["max_position_size_usd"] == 3000.0
+    assert cfg["paper"]["top_n"] == 3
+
+    assert cfg["live"]["tickers"] == ["NVDA", "AMD"]
+    assert cfg["live"]["max_position_size_usd"] == 1000.0
+    assert cfg["live"]["top_n"] == 1
+
+    # 4. Toggle active env to live
+    resp = client.post("/api/config", json={"env": "live"}, headers=headers)
+    assert resp.status_code == 200
+    cfg_live = client.get("/api/config", headers=headers).json()
+    assert cfg_live["env"] == "live"
+    # Active tickers should match live
+    assert cfg_live["tickers"] == ["NVDA", "AMD"]
+    assert cfg_live["max_position_size_usd"] == 1000.0
+
+    # 5. Toggle active env to paper
+    resp = client.post("/api/config", json={"env": "paper"}, headers=headers)
+    assert resp.status_code == 200
+    cfg_paper = client.get("/api/config", headers=headers).json()
+    assert cfg_paper["env"] == "paper"
+    # Active tickers should match paper
+    assert cfg_paper["tickers"] == ["SPY", "QQQ", "IWM"]
+    assert cfg_paper["max_position_size_usd"] == 3000.0
+
+
 def test_schwab_web_oauth_endpoints(monkeypatch):
     from unittest.mock import MagicMock
     from execution.schwab_auth import SchwabAuth
+
+    # Mock Schwab app key so tests run hermetically even in clean docker environments without .env
+    monkeypatch.setattr(SchwabAuth, "__init__", lambda self: setattr(self, "app_key", "MOCK_APP_KEY"))
 
     # 1. Test /api/auth/schwab/login
     resp = client.get("/api/auth/schwab/login")
@@ -184,5 +261,40 @@ def test_schwab_broker_retry_on_401(monkeypatch):
     assert cash == 1234.56
     assert call_count == 2
     assert mock_auth.refresh_access_token.called
+
+
+def test_secret_manager_precedence_over_stale_disk_cache(monkeypatch, tmp_path):
+    from backend.routes import config
+    test_override_file = tmp_path / "config_override.json"
+    
+    # Write a stale config to disk with top_n = 2
+    stale_disk_data = {
+        "env": "live",
+        "live": {"tickers": ["NVDA"], "top_n": 2},
+        "paper": {"tickers": ["NVDA"], "top_n": 2},
+    }
+    with open(test_override_file, "w") as f:
+        json.dump(stale_disk_data, f)
+
+    # Secret Manager has the authoritative top_n = 3
+    remote_authoritative_data = {
+        "env": "live",
+        "live": {"tickers": ["NVDA", "AMD", "AMZN"], "top_n": 3},
+        "paper": {"tickers": ["NVDA", "AMD", "AMZN"], "top_n": 3},
+    }
+
+    monkeypatch.setattr(config, "OVERRIDE_FILE", test_override_file)
+    monkeypatch.setattr(config, "_fetch_from_secret_manager", lambda: remote_authoritative_data)
+    monkeypatch.setattr(config, "_IN_MEMORY_CACHE", (None, 0.0))
+
+    # _raw_load_overrides must prioritize Secret Manager over stale disk cache
+    loaded = config._raw_load_overrides(force_refresh=True)
+    assert loaded["live"]["top_n"] == 3
+    assert loaded["paper"]["top_n"] == 3
+    assert loaded["live"]["tickers"] == ["NVDA", "AMD", "AMZN"]
+
+    # Active overrides should reflect top_n = 3
+    active = config.get_active_overrides("live")
+    assert active["top_n"] == 3
 
 

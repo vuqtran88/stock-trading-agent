@@ -68,11 +68,11 @@ def test_schwab_broker_order_construction():
 
     broker = SchwabBroker(auth=mock_auth, account_hash="TEST_ACCOUNT_HASH")
 
-    with patch("requests.post") as mock_post:
+    with patch("requests.request") as mock_req:
         mock_resp = MagicMock()
         mock_resp.status_code = 201
         mock_resp.headers = {"Location": "https://api.schwabapi.com/trader/v1/accounts/123/orders/999888"}
-        mock_post.return_value = mock_resp
+        mock_req.return_value = mock_resp
 
         report = broker.buy(ticker="AAPL", shares=2)
         assert report.ticker == "AAPL"
@@ -81,7 +81,7 @@ def test_schwab_broker_order_construction():
         assert report.status == "SUBMITTED"
 
         # Check payload
-        payload = mock_post.call_args[1]["json"]
+        payload = mock_req.call_args[1]["json"]
         assert payload["orderType"] == "MARKET"
         assert payload["orderLegCollection"][0]["quantity"] == 2
         assert payload["orderLegCollection"][0]["instrument"]["symbol"] == "AAPL"

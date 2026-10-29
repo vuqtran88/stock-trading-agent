@@ -19,15 +19,17 @@ const POPULAR_TICKERS = [
   'NFLX', 'PLTR', 'AVGO', 'SMCI', 'COIN', 'ARM', 'UBER', 'CRWD'
 ];
 
-export default function Universe() {
+export default function Universe({ activeEnv, onEnvChange }) {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
   const [newTickerInput, setNewTickerInput] = useState('');
 
-  // Editable local state
-  const [env, setEnv] = useState('paper');
+  // Effective environment follows activeEnv or config.env
+  const currentEnv = activeEnv || config?.env || 'paper';
+
+  // Editable local state for the active environment
   const [tickers, setTickers] = useState([]);
   const [maxPositionSize, setMaxPositionSize] = useState(1000);
   const [pilotBudget, setPilotBudget] = useState(5000);
@@ -43,6 +45,22 @@ export default function Universe() {
   const [availableStrategies, setAvailableStrategies] = useState([]);
   const [schwabData, setSchwabData] = useState(null);
 
+  const applyConfigForEnv = (data, envKey) => {
+    if (!data) return;
+    const envData = (data[envKey] && typeof data[envKey] === 'object') ? data[envKey] : data;
+    setTickers(envData.tickers || []);
+    setMaxPositionSize(envData.max_position_size_usd || 1000);
+    setPilotBudget(envData.live_pilot_budget_usd || 5000);
+    setEmaPeriod(envData.regime_ema_period || 20);
+    setMaxHoldings(envData.top_n !== undefined && envData.top_n !== null ? Number(envData.top_n) : 3);
+    setActiveStrategy(envData.active_strategy || 'overnight_drift');
+    setStrategyEnabled(envData.strategy_enabled ?? true);
+    setUseRegimeFilter(envData.use_regime_filter ?? true);
+    setCloseRoutineTime(envData.close_routine_time || '15:50');
+    setOpenRoutineTime(envData.open_routine_time || '09:28');
+    setAvailableStrategies(data.available_strategies || []);
+  };
+
   const fetchConfig = async () => {
     try {
       setLoading(true);
@@ -53,18 +71,8 @@ export default function Universe() {
       if (res.ok) {
         const data = await res.json();
         setConfig(data);
-        setEnv(data.env || 'paper');
-        setTickers(data.tickers || []);
-        setMaxPositionSize(data.max_position_size_usd || 1000);
-        setPilotBudget(data.live_pilot_budget_usd || 5000);
-        setEmaPeriod(data.regime_ema_period || 20);
-        setMaxHoldings(data.top_n || 2);
-        setActiveStrategy(data.active_strategy || 'overnight_drift');
-        setStrategyEnabled(data.strategy_enabled ?? true);
-        setUseRegimeFilter(data.use_regime_filter ?? true);
-        setCloseRoutineTime(data.close_routine_time || '15:50');
-        setOpenRoutineTime(data.open_routine_time || '09:28');
-        setAvailableStrategies(data.available_strategies || []);
+        const resolvedEnv = activeEnv || data.env || 'paper';
+        applyConfigForEnv(data, resolvedEnv);
       }
       if (sRes.ok) {
         const sData = await sRes.json();
@@ -80,6 +88,13 @@ export default function Universe() {
   useEffect(() => {
     fetchConfig();
   }, []);
+
+  // When activeEnv changes from the main navigation toggle, re-populate settings for that environment
+  useEffect(() => {
+    if (config) {
+      applyConfigForEnv(config, currentEnv);
+    }
+  }, [activeEnv]);
 
   const handleAddTicker = (tickerToAdd) => {
     const sym = (tickerToAdd || newTickerInput).trim().toUpperCase();
@@ -104,7 +119,7 @@ export default function Universe() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          env,
+          target_env: currentEnv,
           tickers,
           max_position_size_usd: Number(maxPositionSize),
           live_pilot_budget_usd: Number(pilotBudget),
@@ -120,7 +135,10 @@ export default function Universe() {
 
       const data = await res.json();
       if (res.ok) {
-        setStatusMsg({ type: 'success', text: 'Strategy, timing & universe controls saved successfully!' });
+        setStatusMsg({
+          type: 'success',
+          text: `Strategy & risk controls for ${currentEnv.toUpperCase()} mode saved successfully!`,
+        });
         fetchConfig();
       } else {
         setStatusMsg({ type: 'error', text: data.detail || 'Failed to update config' });
@@ -135,13 +153,13 @@ export default function Universe() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12 text-slate-400">
-        Loading target universe & settings...
+        Loading strategy settings...
       </div>
     );
   }
 
   const selectedStratObj = availableStrategies.find((s) => s.id === activeStrategy);
-  const isLive = env === 'live';
+  const isLive = currentEnv === 'live';
 
   return (
     <div className="space-y-6">
@@ -188,46 +206,49 @@ export default function Universe() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-              Trading Execution Target Environment
+              Strategy Settings Scope
             </span>
             <h3 className="text-sm font-bold text-white mt-0.5">
-              Active Environment: <span className={isLive ? 'text-rose-400 font-mono' : 'text-emerald-400 font-mono'}>{env.toUpperCase()}</span>
+              Configuring: <span className={isLive ? 'text-rose-400 font-mono' : 'text-emerald-400 font-mono'}>{currentEnv.toUpperCase()} MODE</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
               {isLive
-                ? 'Orders execute directly through your authenticated Charles Schwab brokerage account.'
-                : 'Orders execute against the deterministic simulated paper ledger with zero financial risk.'}
+                ? 'Editing parameters for real-money execution through your authenticated Charles Schwab account.'
+                : 'Editing parameters for simulated execution with zero financial risk.'}
+              {' '}Toggling the environment in the top navigation bar automatically switches these settings.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-950/85 border border-slate-800 p-1.5 rounded-xl shrink-0">
-            <button
-              type="button"
-              onClick={() => setEnv('paper')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                !isLive
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              SIMULATED PAPER
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('⚠️ Switch to LIVE Trading? All automated routine scans and orders will use real money.')) {
-                  setEnv('live');
-                }
-              }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                isLive
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              LIVE SCHWAB BROKER
-            </button>
-          </div>
+          {onEnvChange && (
+            <div className="flex items-center gap-2 bg-slate-950/85 border border-slate-800 p-1.5 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentEnv !== 'paper') onEnvChange();
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  !isLive
+                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                PAPER SETTINGS
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentEnv !== 'live') onEnvChange();
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isLive
+                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                LIVE SETTINGS
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Live Schwab Account Diagnostic Card */}
