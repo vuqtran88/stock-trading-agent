@@ -7,6 +7,7 @@ import Universe from './components/Universe';
 import BacktestStudio from './components/BacktestStudio';
 import History from './components/History';
 import LoginModal from './components/LoginModal';
+import StrategyOverview from './components/StrategyOverview';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -381,7 +382,7 @@ export default function App() {
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
-              Live & Paper Dashboard
+              Dashboard
             </button>
 
             <button
@@ -425,6 +426,13 @@ export default function App() {
         {/* Tab Content */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* Strategy Overview Card */}
+            <StrategyOverview
+              config={config}
+              currentEnv={currentEnv}
+              onNavigateSettings={() => setActiveTab('universe')}
+            />
+
             {/* Top row: Portfolio overview & holdings */}
             <Portfolio
               portfolio={portfolio}
