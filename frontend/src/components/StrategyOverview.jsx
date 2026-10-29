@@ -192,3 +192,4 @@ export default function StrategyOverview({ config, currentEnv, onNavigateSetting
     </div>
   );
 }
+

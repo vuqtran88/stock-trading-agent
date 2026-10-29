@@ -31,7 +31,7 @@ def test_discord_notifier_payload():
         assert "Buy Routine" in call_kwargs["json"]["embeds"][0]["title"]
 
 
-def test_schwab_auth_token_refresh(tmp_path):
+def test_schwab_auth_token_refresh(tmp_path, monkeypatch):
     token_file = tmp_path / "schwab_token.json"
     auth = SchwabAuth(
         app_key="TEST_KEY",
@@ -39,6 +39,9 @@ def test_schwab_auth_token_refresh(tmp_path):
         callback_url="https://127.0.0.1:8080",
         token_path=token_file,
     )
+
+    # Mock sync_to_secret_manager to prevent test runs from polluting production Secret Manager
+    monkeypatch.setattr(auth, "sync_to_secret_manager", lambda: True)
 
     # Pre-populate token that has expired
     auth._save_tokens({
