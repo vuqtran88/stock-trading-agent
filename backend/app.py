@@ -16,6 +16,7 @@ from backend.routes.auth import router as auth_router
 from backend.routes.config import router as config_router
 from backend.routes.trading import router as trading_router
 from backend.routes.backtest import router as backtest_router
+from backend.routes.agent import router as agent_router
 
 app = FastAPI(
     title="Stock Trading Agent Dashboard API",
@@ -37,6 +38,7 @@ app.include_router(auth_router)
 app.include_router(config_router)
 app.include_router(trading_router)
 app.include_router(backtest_router)
+app.include_router(agent_router)
 
 # Mount frontend production build if present
 frontend_dist = ROOT_DIR / "frontend" / "dist"

@@ -8,6 +8,7 @@ import BacktestStudio from './components/BacktestStudio';
 import History from './components/History';
 import LoginModal from './components/LoginModal';
 import StrategyOverview from './components/StrategyOverview';
+import AgentCopilot from './components/AgentCopilot';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -16,6 +17,7 @@ import {
   ShieldAlert,
   AlertTriangle,
   Clock,
+  Bot,
 } from 'lucide-react';
 
 export default function App() {
@@ -386,6 +388,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('copilot')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'copilot'
+                  ? 'bg-teal-500/15 text-teal-300 border border-teal-500/30 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Bot className="w-4 h-4 text-teal-400" />
+              AI Copilot
+            </button>
+
+            <button
               onClick={() => setActiveTab('backtest')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'backtest'
@@ -424,6 +438,10 @@ export default function App() {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'copilot' && (
+          <AgentCopilot />
+        )}
+
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {/* Strategy Overview Card */}

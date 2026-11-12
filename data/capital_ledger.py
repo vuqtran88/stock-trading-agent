@@ -8,6 +8,7 @@ and cached locally to disk.
 
 import json
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -17,7 +18,10 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 LEDGER_FILE = settings.DATA_DIR / "capital_ledger.json"
-GCP_CAPITAL_SECRET_NAME = "projects/stock-trading-agent-249477/secrets/strategy-capital-ledger"
+GCP_CAPITAL_SECRET_NAME = os.environ.get(
+    "GCP_CAPITAL_SECRET_NAME",
+    "projects/stock-trading-agent-249477/secrets/strategy-capital-ledger",
+)
 
 
 def _fetch_capital_ledger_from_secret() -> Optional[Dict]:
@@ -36,16 +40,22 @@ def _fetch_capital_ledger_from_secret() -> Optional[Dict]:
 
 
 def _sync_capital_ledger_to_secret(ledger: Dict):
-    """Persist capital ledger to GCP Secret Manager."""
+    """Persist capital ledger to GCP Secret Manager and prune obsolete versions."""
     try:
         from google.cloud import secretmanager
         client = secretmanager.SecretManagerServiceClient()
         payload_bytes = json.dumps(ledger, indent=2).encode("utf-8")
-        client.add_secret_version(
+        new_ver = client.add_secret_version(
             parent=GCP_CAPITAL_SECRET_NAME,
             payload={"data": payload_bytes},
         )
         logger.info("Persisted updated capital ledger to GCP Secret Manager.")
+        try:
+            for ver in client.list_secret_versions(request={"parent": GCP_CAPITAL_SECRET_NAME}):
+                if ver.name != new_ver.name and ver.state != secretmanager.SecretVersion.State.DESTROYED:
+                    client.destroy_secret_version(request={"name": ver.name})
+        except Exception as cleanup_err:
+            logger.debug(f"Could not prune older capital ledger secret versions: {cleanup_err}")
     except Exception as e:
         logger.warning(f"Could not persist capital ledger to Secret Manager: {e}")
 

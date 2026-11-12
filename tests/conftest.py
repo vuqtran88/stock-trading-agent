@@ -135,23 +135,13 @@ def hermetic_test_isolation(tmp_path, monkeypatch):
                     matched_test_secret = test_name
                     break
 
-            try:
-                # Attempt live read from dedicated test secret in GCP
-                if name:
-                    return original_access(self, name=rewritten_name, **kwargs)
-                else:
-                    if request and hasattr(request, "name"):
-                        request.name = rewritten_name
-                    return original_access(self, request=request, **kwargs)
-            except Exception as e:
-                # If network or credentials fail, fallback gracefully to synthetic test payload
-                logger.debug(f"Test Secret Manager read fell back to synthetic payload: {e}")
-                if matched_test_secret and matched_test_secret in SYNTHETIC_PAYLOAD_MAP:
-                    mock_resp = MagicMock()
-                    mock_resp.payload.data = SYNTHETIC_PAYLOAD_MAP[matched_test_secret]
-                    mock_resp.name = rewritten_name
-                    return mock_resp
-                raise e
+            if matched_test_secret and matched_test_secret in SYNTHETIC_PAYLOAD_MAP:
+                mock_resp = MagicMock()
+                mock_resp.payload.data = SYNTHETIC_PAYLOAD_MAP[matched_test_secret]
+                mock_resp.name = rewritten_name
+                return mock_resp
+
+            raise RuntimeError(f"Blocked unmocked Secret Manager read in test: {raw_name}")
 
         monkeypatch.setattr(
             real_sm_client_cls,

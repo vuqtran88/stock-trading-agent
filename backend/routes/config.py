@@ -1,6 +1,7 @@
 """Configuration & Universe settings API routes."""
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -17,7 +18,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 OVERRIDE_FILE = settings.DATA_DIR / "config_override.json"
-GCP_CONFIG_SECRET_NAME = "projects/stock-trading-agent-249477/secrets/strategy-runtime-config"
+GCP_CONFIG_SECRET_NAME = os.environ.get(
+    "GCP_CONFIG_SECRET_NAME",
+    "projects/stock-trading-agent-249477/secrets/strategy-runtime-config",
+)
 CACHE_TTL_SECONDS = 30.0
 
 # In-memory cache: (cached_dict, timestamp)
@@ -42,16 +46,22 @@ def _fetch_from_secret_manager() -> Optional[Dict]:
 
 
 def _sync_to_secret_manager(overrides: Dict):
-    """Sync persistent configuration to GCP Secret Manager."""
+    """Sync persistent configuration to GCP Secret Manager and prune obsolete versions."""
     try:
         from google.cloud import secretmanager
         client = secretmanager.SecretManagerServiceClient()
         payload_bytes = json.dumps(overrides, indent=2).encode("utf-8")
-        client.add_secret_version(
+        new_ver = client.add_secret_version(
             parent=GCP_CONFIG_SECRET_NAME,
             payload={"data": payload_bytes},
         )
         logger.info("Persisted updated configuration to GCP Secret Manager.")
+        try:
+            for ver in client.list_secret_versions(request={"parent": GCP_CONFIG_SECRET_NAME}):
+                if ver.name != new_ver.name and ver.state != secretmanager.SecretVersion.State.DESTROYED:
+                    client.destroy_secret_version(request={"name": ver.name})
+        except Exception as cleanup_err:
+            logger.debug(f"Could not prune older config secret versions: {cleanup_err}")
     except Exception as e:
         logger.warning(f"Could not persist config to Secret Manager: {e}")
 

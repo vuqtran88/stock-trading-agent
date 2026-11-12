@@ -1,5 +1,6 @@
 """Configuration module for stock-trading-agent."""
 
+import secrets
 from typing import List, Literal
 from pathlib import Path
 from pydantic import Field
@@ -18,11 +19,11 @@ class Settings(BaseSettings):
     # Runtime Environment
     ENV: Literal["backtest", "paper", "live"] = "paper"
 
-    # Dashboard Web Security
+    # Dashboard Web Security (override in production via environment / Secret Manager)
     DASHBOARD_PASSWORD: str = "admin123"
-    JWT_SECRET_KEY: str = "stock-trading-agent-secure-secret-key-2026"
+    JWT_SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
     JWT_ALGORITHM: str = "HS256"
-    CRON_API_KEY: str = "alphadrift-cron-auth-token-2026"
+    CRON_API_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
 
     # Universe
     TICKERS: str = "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA"

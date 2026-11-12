@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 SCHWAB_AUTH_URL = "https://api.schwabapi.com/v1/oauth/authorize"
 SCHWAB_TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token"
 
+# In-memory cache for GCP Secret Manager token reads to avoid excessive API calls & billing
+_SECRET_TOKEN_CACHE: tuple[Optional[Dict], float] = (None, 0.0)
+_SECRET_TOKEN_CACHE_TTL = 300.0  # 5 minutes
+
 
 def detect_redirect_url_from_system() -> Optional[str]:
     """Inspect active macOS browsers (Chrome, Safari, Brave, Edge) and clipboard for OAuth redirect."""
@@ -212,29 +216,64 @@ class SchwabAuth:
         self._load_cached_tokens()
 
     def _load_cached_tokens(self):
-        """Load stored tokens from disk or dynamically from GCP Secret Manager API."""
-        # 1. First check local disk cache
+        """Load stored tokens from GCP Secret Manager API (cached 5m) or disk cache (prioritizing newest)."""
+        global _SECRET_TOKEN_CACHE
+        disk_tokens = None
         if self.token_file.exists():
             try:
                 with open(self.token_file, "r") as f:
-                    self.tokens = json.load(f)
-                    return
+                    disk_tokens = json.load(f)
             except Exception as e:
                 logger.warning(f"Error reading token file: {e}")
 
-        # 2. In cloud environments, fetch latest token directly from GCP Secret Manager API
-        try:
-            from google.cloud import secretmanager
-            client = secretmanager.SecretManagerServiceClient()
-            secret_name = "projects/stock-trading-agent-249477/secrets/schwab-token-data/versions/latest"
-            resp = client.access_secret_version(name=secret_name)
-            payload = resp.payload.data.decode("utf-8")
-            if payload:
-                self.tokens = json.loads(payload)
-                logger.info("Fetched fresh Schwab tokens directly from GCP Secret Manager API.")
+        # Check GCP Secret Manager for newest token (with 5-minute TTL cache)
+        now = time.time()
+        cached_secret_tokens, cached_ts = _SECRET_TOKEN_CACHE
+        if cached_secret_tokens is not None and (now - cached_ts) < _SECRET_TOKEN_CACHE_TTL:
+            secret_tokens = dict(cached_secret_tokens)
+        else:
+            secret_tokens = None
+            try:
+                from google.cloud import secretmanager
+                client = secretmanager.SecretManagerServiceClient()
+                secret_name = "projects/stock-trading-agent-249477/secrets/schwab-token-data/versions/latest"
+                resp = client.access_secret_version(name=secret_name)
+                payload = resp.payload.data.decode("utf-8")
+                if payload:
+                    secret_tokens = json.loads(payload)
+                    _SECRET_TOKEN_CACHE = (dict(secret_tokens), now)
+            except Exception as e:
+                logger.debug(f"Direct Secret Manager token fetch skipped/failed: {e}")
+
+        # Compare created_at timestamps and select the newest one
+        if secret_tokens and disk_tokens:
+            secret_ts = secret_tokens.get("created_at", 0)
+            disk_ts = disk_tokens.get("created_at", 0)
+            if secret_ts > disk_ts:
+                self.tokens = secret_tokens
+                # Sync back to local disk
+                try:
+                    with open(self.token_file, "w") as f:
+                        json.dump(secret_tokens, f, indent=2)
+                    logger.info("Updated local token cache with newer token from GCP Secret Manager.")
+                except Exception as e:
+                    logger.warning(f"Failed to update local token file: {e}")
                 return
-        except Exception as e:
-            logger.debug(f"Direct Secret Manager token fetch skipped/failed: {e}")
+            else:
+                self.tokens = disk_tokens
+                return
+        elif secret_tokens:
+            self.tokens = secret_tokens
+            try:
+                self.token_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.token_file, "w") as f:
+                    json.dump(secret_tokens, f, indent=2)
+            except Exception:
+                pass
+            return
+        elif disk_tokens:
+            self.tokens = disk_tokens
+            return
 
         # 3. Fallback to SCHWAB_TOKEN_DATA environment variable
         if settings.SCHWAB_TOKEN_DATA:
@@ -257,8 +296,8 @@ class SchwabAuth:
         if not incoming_rt and existing_rt:
             token_data["refresh_token"] = existing_rt
 
-        # Only reset created_at if a brand-new refresh token was issued
-        is_new_refresh_token = bool(incoming_rt and existing_rt and incoming_rt != existing_rt)
+        # Only reset created_at and sync to Secret Manager if a brand-new refresh token was issued
+        is_new_refresh_token = bool(incoming_rt and (not existing_rt or incoming_rt != existing_rt))
         if not is_new_refresh_token and self.tokens and "created_at" in self.tokens:
             token_data["created_at"] = self.tokens["created_at"]
         elif "created_at" not in token_data:
@@ -270,8 +309,10 @@ class SchwabAuth:
             json.dump(token_data, f, indent=2)
         logger.info(f"Schwab tokens cached at {self.token_file}")
 
-        # Automatically synchronize token to Google Cloud Secret Manager if configured/available
-        self.sync_to_secret_manager()
+        # Only write a new version to GCP Secret Manager when the 7-day refresh_token changes
+        # (avoids creating 48 billed secret versions per day on 30-min access_token refreshes)
+        if is_new_refresh_token:
+            self.sync_to_secret_manager()
 
     def get_refresh_token_status(self) -> Dict:
         """Returns refresh token health, age, remaining lifetime (7-day maximum), and warning status."""
@@ -334,7 +375,8 @@ class SchwabAuth:
         }
 
     def sync_to_secret_manager(self) -> bool:
-        """Persist tokens directly to GCP Secret Manager (schwab-token-data)."""
+        """Persist tokens directly to GCP Secret Manager (schwab-token-data) and destroy old versions."""
+        global _SECRET_TOKEN_CACHE
         if not self.tokens:
             return False
         try:
@@ -342,11 +384,21 @@ class SchwabAuth:
             secret_name = "projects/stock-trading-agent-249477/secrets/schwab-token-data"
             client = secretmanager.SecretManagerServiceClient()
             payload_bytes = json.dumps(self.tokens, indent=2).encode("utf-8")
-            client.add_secret_version(
+            new_ver = client.add_secret_version(
                 parent=secret_name,
                 payload={"data": payload_bytes},
             )
+            _SECRET_TOKEN_CACHE = (dict(self.tokens), time.time())
             logger.info("Persisted updated Schwab tokens to GCP Secret Manager.")
+
+            # Automatically destroy older versions to prevent Secret Manager version accumulation costs
+            try:
+                for ver in client.list_secret_versions(request={"parent": secret_name}):
+                    if ver.name != new_ver.name and ver.state != secretmanager.SecretVersion.State.DESTROYED:
+                        client.destroy_secret_version(request={"name": ver.name})
+            except Exception as cleanup_err:
+                logger.debug(f"Could not prune older Schwab token secret versions: {cleanup_err}")
+
             return True
         except Exception as e:
             logger.warning(f"Could not persist Schwab tokens to Secret Manager: {e}")

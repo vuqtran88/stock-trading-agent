@@ -33,8 +33,7 @@
    - `scripts/scan_secrets.py` + `.git/hooks/pre-commit` + `.github/workflows/security-scan.yml` (pre-commit secret scanner preventing leaks of keys, `.env`, or Discord webhooks).
 
 ## Live Schwab Accounts Linked
-- Hash 1: `59BD30941584226BEAF816A0F768EA27EE2096C3D082550EA9547D7DDF593208` (Account ...9676)
-- Hash 2: `058805D347B11CB7E0FE86A0916F368E01BD400FD24F32DE86436003DC2DCDC8` (Account ...4571)
+- Configured via `SCHWAB_ACCOUNT_HASH` in `.env` (local) and `schwab-account-hash` in GCP Secret Manager (cloud).
 
 ## Essential Commands
 ```bash
