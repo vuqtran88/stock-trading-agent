@@ -1,24 +1,42 @@
 """Persistence store for AI Copilot historical analysis dossiers."""
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
+from agents.cloud_storage import load_synced_history, save_synced_history
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
 ANALYSIS_HISTORY_FILE = settings.DATA_DIR / "copilot_history.json"
+GCS_COPILOT_HISTORY_OBJECT = "history/copilot_history.json"
 
 
 class CopilotHistoryStore:
-    """Thread-safe persistent JSON store for AI Copilot historical analyses."""
+    """Thread-safe persistent JSON store for AI Copilot historical analyses (synced with GCS)."""
 
     def __init__(self, file_path: Optional[Path] = None):
+        self._using_default_path = file_path is None
         self.file_path = file_path or (settings.DATA_DIR / "copilot_history.json")
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _load_all(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        return load_synced_history(
+            object_name=GCS_COPILOT_HISTORY_OBJECT,
+            local_path=self.file_path,
+            using_default_path=self._using_default_path,
+            force_refresh=force_refresh,
+        )
+
+    def _save_all(self, records: List[Dict[str, Any]]) -> None:
+        save_synced_history(
+            object_name=GCS_COPILOT_HISTORY_OBJECT,
+            local_path=self.file_path,
+            records=records,
+            using_default_path=self._using_default_path,
+        )
 
     def save_analysis(
         self,
@@ -47,54 +65,35 @@ class CopilotHistoryStore:
             "company_data": company_data or {},
         }
 
-        history = self.list_analyses(limit=200)
+        history = self._load_all()[:199]
         # Prepend new record so latest comes first
         history.insert(0, record)
-
-        try:
-            with open(self.file_path, "w") as f:
-                json.dump(history, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to persist copilot analysis history: {e}")
-
+        self._save_all(history)
         return record
 
     def list_analyses(self, limit: int = 50, ticker: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns list of past analyses with optional ticker filter."""
-        if not self.file_path.exists():
-            return []
-        try:
-            with open(self.file_path, "r") as f:
-                data = json.load(f)
-                if not isinstance(data, list):
-                    return []
-                if ticker:
-                    ticker_clean = ticker.strip().upper()
-                    data = [item for item in data if item.get("ticker") == ticker_clean]
-                return data[:limit]
-        except Exception as e:
-            logger.error(f"Failed to load copilot analysis history: {e}")
-            return []
+        data = self._load_all()
+        if ticker:
+            ticker_clean = ticker.strip().upper()
+            data = [item for item in data if item.get("ticker") == ticker_clean]
+        return data[:limit]
 
     def get_analysis_by_id(self, record_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a single full dossier by ID."""
-        for item in self.list_analyses(limit=200):
+        for item in self._load_all():
             if item.get("id") == record_id:
                 return item
         return None
 
     def delete_analysis(self, record_id: str) -> bool:
         """Deletes a specific history record."""
-        history = self.list_analyses(limit=200)
+        history = self._load_all()
         initial_len = len(history)
         history = [item for item in history if item.get("id") != record_id]
         if len(history) != initial_len:
-            try:
-                with open(self.file_path, "w") as f:
-                    json.dump(history, f, indent=2)
-                return True
-            except Exception as e:
-                logger.error(f"Failed to save history after delete: {e}")
+            self._save_all(history)
+            return True
         return False
 
     def clear_history(self) -> None:
@@ -103,5 +102,11 @@ class CopilotHistoryStore:
             try:
                 self.file_path.unlink()
             except Exception as e:
-                logger.error(f"Failed to clear history: {e}")
+                logger.error(f"Failed to clear local history file: {e}")
+        self._save_all([])
+        if self.file_path.exists():
+            try:
+                self.file_path.unlink()
+            except Exception:
+                pass
 

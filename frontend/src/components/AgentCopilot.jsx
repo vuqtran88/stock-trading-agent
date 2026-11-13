@@ -29,6 +29,13 @@ const PERSONA_ORDER = [
   'Bearish Risk Advocate',
 ];
 
+const PERSONA_WEIGHTS = {
+  'Fundamental Analyst': { weight: 0.35, pct: '35%', shortLabel: 'Fundamental', metricLabel: 'Score' },
+  'Technical Analyst': { weight: 0.25, pct: '25%', shortLabel: 'Technical', metricLabel: 'Score' },
+  'Sentiment Analyst': { weight: 0.20, pct: '20%', shortLabel: 'Sentiment', metricLabel: 'Score' },
+  'Bearish Risk Advocate': { weight: 0.20, pct: '20%', shortLabel: 'Risk Safety', metricLabel: 'Risk Safety' },
+};
+
 export default function AgentCopilot() {
   const [activeSubTab, setActiveSubTab] = useState('committee'); // 'committee' | 'earnings_lab'
   const [ticker, setTicker] = useState('NVDA');
@@ -449,6 +456,63 @@ export default function AgentCopilot() {
                 </div>
               </div>
 
+              {/* Conviction Score Formula & Breakdown */}
+              <div className="p-4 rounded-xl border border-teal-500/25 bg-slate-950/70 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-800/80 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-teal-400">
+                    Conviction Score Formula &amp; Weighted Breakdown
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    0.35×Fundamental + 0.25×Technical + 0.20×Sentiment + 0.20×Risk Safety = <strong className="text-teal-300">{finalDossier.conviction_score}/10</strong>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                  {PERSONA_ORDER.map((pName) => {
+                    const meta = PERSONA_WEIGHTS[pName];
+                    const reportMatch = personaReports.find((r) => r.persona_name === pName);
+                    const rawScore =
+                      finalDossier.persona_scores?.[pName] ??
+                      reportMatch?.score ??
+                      null;
+                    const contrib = rawScore !== null ? (Number(rawScore) * meta.weight).toFixed(2) : null;
+                    return (
+                      <div
+                        key={pName}
+                        className="p-2.5 rounded-lg border border-slate-800/90 bg-slate-900/70 flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                          <span className="font-semibold text-slate-200 truncate">{meta.shortLabel}</span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-teal-300">
+                            {meta.pct}
+                          </span>
+                        </div>
+                        {rawScore !== null ? (
+                          <div className="flex items-baseline justify-between font-mono">
+                            <span className="text-xs text-slate-400">
+                              {Number(rawScore).toFixed(1)}/10
+                            </span>
+                            <span className="text-sm font-bold text-teal-400">
+                              +{contrib} pts
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-mono text-slate-500">N/A</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {finalDossier.conviction_score_breakdown?.length > 0 && (
+                  <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside pt-1 border-t border-slate-800/60">
+                    {finalDossier.conviction_score_breakdown.map((item, idx) => (
+                      <li key={idx} className="leading-relaxed">{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               {/* Executive Thesis */}
               <div className="space-y-1.5">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-teal-400">Executive Investment Thesis</h4>
@@ -528,9 +592,20 @@ export default function AgentCopilot() {
                           }`}>
                             {report.stance}
                           </span>
+                          {PERSONA_WEIGHTS[report.persona_name] && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[10px]">
+                              {PERSONA_WEIGHTS[report.persona_name].pct} wt
+                            </span>
+                          )}
                         </div>
-                        <div className="font-mono font-black text-sm text-slate-200">
-                          Score: <span className="text-teal-400">{report.score}</span>/10
+                        <div className="text-right">
+                          <div className="font-mono font-black text-sm text-slate-200">
+                            {PERSONA_WEIGHTS[report.persona_name]?.metricLabel || 'Score'}:{' '}
+                            <span className="text-teal-400">{report.score}</span>/10
+                          </div>
+                          {report.persona_name === 'Bearish Risk Advocate' && (
+                            <div className="text-[10px] text-slate-500">1=High Risk, 10=Safe</div>
+                          )}
                         </div>
                       </div>
 

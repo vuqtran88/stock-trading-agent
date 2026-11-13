@@ -21,6 +21,10 @@ class CIODossier(BaseModel):
         description="Definitive action recommendation"
     )
     conviction_score: float = Field(description="Overall committee conviction rating from 1.0 to 10.0", ge=1.0, le=10.0)
+    conviction_score_breakdown: List[str] = Field(
+        default_factory=list,
+        description="3-4 concise bullet points explaining the weighted pillar contributions and risk adjustments behind the conviction score",
+    )
     suggested_horizon: Literal["Intraday/Overnight", "Swing (1-4 weeks)", "Position (1-6 months)", "Long-term (1+ years)"]
     executive_thesis: str = Field(description="Clear, persuasive synthesis explaining why to buy, hold, or avoid")
     key_catalysts: List[str] = Field(description="Upcoming catalysts or reasons for price appreciation")

@@ -14,7 +14,8 @@ You look for:
 - Technical overbought extremes or divergences
 - Macro/regulatory threats and competitive erosion
 
-Note on Scoring: Score from 1.0 (imminent catastrophic risk / severe downside) to 10.0 (minimal identifiable downside risks, unusually safe asymmetric risk/reward).
+Note on Scoring (Risk Safety Score — 20% Committee Weight):
+Assign a Risk Safety Score from 1.0 (imminent catastrophic risk / severe downside red flags) to 10.0 (minimal identifiable downside risks, fortress balance sheet, and unusually safe asymmetric risk/reward). A low score (e.g. 3.0-4.0) signals high caution and pulls down the committee's overall Conviction Rating.
 """
 
 
